@@ -1,0 +1,67 @@
+resources:
+  jobs:
+    doc_processing_job:
+      name: "[${var.catalog}.${var.schema}] Document Processing Pipeline"
+
+      job_clusters:
+        - job_cluster_key: "doc_processing_cluster"
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: ${var.num_workers}
+            spark_conf:
+              "spark.databricks.sql.variant.enabled": "true"
+              "spark.executor.cores": "2"
+              "spark.task.cpus": "2"
+              "spark.task.maxFailures": "1"
+
+      tasks:
+        - task_key: "sync_sources"
+          job_cluster_key: "doc_processing_cluster"
+          notebook_task:
+            notebook_path: ../src/00_sync_sources.py
+            base_parameters:
+              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            source: WORKSPACE
+
+        - task_key: "ingest_documents"
+          depends_on:
+            - task_key: "sync_sources"
+          job_cluster_key: "doc_processing_cluster"
+          notebook_task:
+            notebook_path: ../src/01_ingest_documents.py
+            base_parameters:
+              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            source: WORKSPACE
+
+        - task_key: "parse_documents"
+          depends_on:
+            - task_key: "ingest_documents"
+          job_cluster_key: "doc_processing_cluster"
+          notebook_task:
+            notebook_path: ../src/02_parse_documents.py
+            base_parameters:
+              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            source: WORKSPACE
+
+        - task_key: "flatten_elements"
+          depends_on:
+            - task_key: "parse_documents"
+          job_cluster_key: "doc_processing_cluster"
+          notebook_task:
+            notebook_path: ../src/03_flatten_elements.py
+            base_parameters:
+              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+            source: WORKSPACE
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"

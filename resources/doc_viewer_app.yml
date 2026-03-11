@@ -1,0 +1,6 @@
+resources:
+  apps:
+    doc_viewer:
+      name: doc-viewer
+      description: "Browse and inspect processed documents with bounding box overlays"
+      source_code_path: ../app

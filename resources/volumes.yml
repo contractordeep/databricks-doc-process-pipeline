@@ -1,0 +1,19 @@
+resources:
+  volumes:
+    parsed_images:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "parsed_images"
+      volume_type: "MANAGED"
+
+    raw_docs:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "raw_docs"
+      volume_type: "MANAGED"
+
+    staging:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "staging"
+      volume_type: "MANAGED"

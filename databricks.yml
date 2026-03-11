@@ -1,0 +1,34 @@
+bundle:
+  name: doc-processing-pipeline
+
+include:
+  - resources/*.yml
+
+# All variables have sensible defaults and can be overridden on the CLI:
+#   databricks bundle deploy --var catalog=prod_catalog --var num_workers=8
+#
+# The workspace is determined by your active Databricks CLI profile:
+#   - Default profile from ~/.databrickscfg is used automatically
+#   - Override with: DATABRICKS_CONFIG_PROFILE=my-profile databricks bundle deploy
+#   - Or set "host" below to pin a specific workspace
+
+variables:
+  catalog:
+    default: "main"
+    description: "Unity Catalog name"
+  schema:
+    default: "doc_processing"
+    description: "Schema for all pipeline tables and volumes"
+  spark_version:
+    default: "17.1.x-scala2.12"
+    description: "Databricks Runtime version (must be 17.1+)"
+  node_type_id:
+    default: "Standard_E4ds_v5"
+    description: "Azure VM type for the job cluster (memory-optimized recommended)"
+  num_workers:
+    default: 4
+    description: "Number of workers on the job cluster"
+
+targets:
+  default:
+    default: true

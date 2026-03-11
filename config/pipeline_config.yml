@@ -1,0 +1,123 @@
+# ============================================================
+# Document Processing Pipeline Configuration
+# ============================================================
+# Edit this file to control the pipeline behavior.
+# Placeholders like {catalog} and {schema} are resolved at
+# runtime from Databricks job parameters (set by the DAB).
+# ============================================================
+
+# Define one or more document sources. Each source is synced into
+# a staging volume, registered in the document_registry table,
+# and then processed by ai_parse_document.
+#
+# Supported types: volume, sharepoint, google_drive, adls
+
+sources:
+  # Volume source with multiple paths (use `paths` for a list, or `path` for one)
+  - name: "invoices"
+    type: "volume"
+    paths:
+      - "/Volumes/{catalog}/{schema}/raw_docs/invoices"
+      - "/Volumes/{catalog}/{schema}/raw_docs/receipts"
+    file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
+    recursive: true
+
+  # Single-path volume source (use `path` for one)
+  - name: "contracts"
+    type: "volume"
+    path: "/Volumes/{catalog}/{schema}/raw_docs/contracts"
+    file_pattern: "*.{pdf,docx}"
+    recursive: true
+
+  # --- SharePoint example: multiple folders ---
+  # - name: "sp_legal"
+  #   type: "sharepoint"
+  #   site_url: "https://contoso.sharepoint.com/sites/legal"
+  #   library: "Shared Documents"
+  #   folders:                          # use `folders` for multiple, or `folder` for one
+  #     - "/Contracts/2025"
+  #     - "/NDAs/Active"
+  #     - "/Agreements"
+  #   file_pattern: "*.{pdf,docx}"
+  #   recursive: true
+  #   auth:
+  #     secret_scope: "sharepoint-scope"
+  #     tenant_id_key: "tenant-id"
+  #     client_id_key: "client-id"
+  #     client_secret_key: "client-secret"
+
+  # --- Google Drive example: multiple folder IDs ---
+  # - name: "gdrive_reports"
+  #   type: "google_drive"
+  #   folder_ids:                       # use `folder_ids` for multiple, or `folder_id` for one
+  #     - "1ABCxyz_folder_1"
+  #     - "2DEFabc_folder_2"
+  #   file_pattern: "*.pdf"
+  #   recursive: true
+  #   auth:
+  #     secret_scope: "google-scope"
+  #     service_account_key: "sa-credentials-json"
+
+  # --- Azure Data Lake Storage example: multiple prefixes ---
+  # - name: "adls_intake"
+  #   type: "adls"
+  #   storage_account: "mystorageaccount"
+  #   container: "documents"
+  #   prefixes:                         # use `prefixes` for multiple, or `prefix` for one
+  #     - "intake/2025"
+  #     - "intake/2024"
+  #     - "archive/legal"
+  #   file_pattern: "*.{pdf,docx}"
+  #   recursive: true
+  #   auth:
+  #     secret_scope: "azure-scope"
+  #     account_key_secret: "storage-account-key"
+
+processing:
+  batch_size: 50
+  max_retries: 3
+  retry_delay_seconds: 10
+
+  ai_parse_options:
+    version: "2.0"
+    description_element_types: "*"
+    save_page_images: true
+
+compute:
+  spark_version: "17.1.x-scala2.12"
+
+  # Azure instance types (memory-optimized recommended for doc processing):
+  #   Standard_E4ds_v5   —  4 cores,  32 GB  — small loads (< 100 docs)
+  #   Standard_E8ds_v5   —  8 cores,  64 GB  — medium/large loads (100–5000 docs)
+  #   Standard_E16ds_v5  — 16 cores, 128 GB  — very large loads (5000+) or heavy PDFs (50+ pages, > 10 MB avg)
+  node_type_id: "Standard_E4ds_v5"
+
+  # Worker sizing guide:
+  #   < 100 docs        — 2 workers
+  #   100–1,000 docs    — 4 workers
+  #   1,000–5,000 docs  — 8 workers
+  #   5,000+ docs       — 16 workers
+  #   Heavy PDFs (> 10 MB avg) — double the above
+  num_workers: 4
+
+  spark_conf:
+    # Number of cores allocated to each executor process.
+    spark.executor.cores: "2"
+    # Number of cores each individual Spark task consumes.
+    spark.task.cpus: "2"
+    # Number of times a single Spark task can fail before the job is aborted.
+    spark.task.maxFailures: "1"
+
+storage:
+  catalog: "main"
+  schema: "doc_processing"
+  image_volume: "parsed_images"
+  staging_volume: "staging"
+
+  tables:
+    document_registry: "document_registry"
+    raw_documents: "raw_documents"
+    parsed_documents: "parsed_documents"
+    document_elements: "document_elements"
+    document_pages: "document_pages"
+    processing_log: "processing_log"
