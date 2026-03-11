@@ -23,13 +23,11 @@ import sys
 # COMMAND ----------
 
 config_path = dbutils.widgets.get("config_path")
-catalog = dbutils.widgets.get("catalog")
-schema = dbutils.widgets.get("schema")
 
 sys.path.insert(0, os.path.dirname(config_path.replace("/Workspace", "/Workspace")))
 from src.utils.config import load_config
 
-config = load_config(config_path, variables={"catalog": catalog, "schema": schema})
+config = load_config(config_path)
 
 run_id = dbutils.jobs.taskValues.get(taskKey="parse_documents", key="run_id")
 total_parsed = dbutils.jobs.taskValues.get(taskKey="parse_documents", key="total_parsed")

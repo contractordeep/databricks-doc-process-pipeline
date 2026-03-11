@@ -1,7 +1,7 @@
 resources:
   jobs:
     doc_processing_job:
-      name: "[${var.catalog}.${var.schema}] Document Processing Pipeline"
+      name: "Document Processing Pipeline"
 
       job_clusters:
         - job_cluster_key: "doc_processing_cluster"
@@ -22,8 +22,6 @@ resources:
             notebook_path: ../src/00_sync_sources.py
             base_parameters:
               config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
-              catalog: ${var.catalog}
-              schema: ${var.schema}
             source: WORKSPACE
 
         - task_key: "ingest_documents"
@@ -34,8 +32,6 @@ resources:
             notebook_path: ../src/01_ingest_documents.py
             base_parameters:
               config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
-              catalog: ${var.catalog}
-              schema: ${var.schema}
             source: WORKSPACE
 
         - task_key: "parse_documents"
@@ -46,8 +42,6 @@ resources:
             notebook_path: ../src/02_parse_documents.py
             base_parameters:
               config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
-              catalog: ${var.catalog}
-              schema: ${var.schema}
             source: WORKSPACE
 
         - task_key: "flatten_elements"
@@ -58,8 +52,6 @@ resources:
             notebook_path: ../src/03_flatten_elements.py
             base_parameters:
               config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
-              catalog: ${var.catalog}
-              schema: ${var.schema}
             source: WORKSPACE
 
       permissions:

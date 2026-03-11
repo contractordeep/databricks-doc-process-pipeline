@@ -108,6 +108,8 @@ compute:
     # Number of times a single Spark task can fail before the job is aborted.
     spark.task.maxFailures: "1"
 
+# Set your Unity Catalog and schema here. All tables and volumes
+# are created under this catalog.schema namespace.
 storage:
   catalog: "main"
   schema: "doc_processing"

@@ -28,14 +28,22 @@ Prerequisites: Databricks CLI configured, Runtime 17.1+, Unity Catalog enabled, 
 git clone <repo-url> && cd databricks-doc-process-pipeline
 ```
 
-Edit `config/pipeline_config.yml` to point at your document sources. At minimum, set a volume path:
+Edit `config/pipeline_config.yml`. First, set your Unity Catalog and schema under `storage`:
+
+```yaml
+storage:
+  catalog: "my_catalog"
+  schema: "my_schema"
+```
+
+Then configure your document sources:
 
 ```yaml
 sources:
   - name: "my_docs"
     type: "volume"
     paths:
-      - "/Volumes/main/doc_processing/raw_docs/my_folder"
+      - "/Volumes/my_catalog/my_schema/raw_docs/my_folder"
     file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
     recursive: true
 ```
@@ -56,10 +64,10 @@ databricks bundle deploy
 
 Deploys the job, volumes, and app to the workspace tied to your active Databricks CLI profile.
 
-The DAB has no explicit `dev`/`staging`/`prod` targets — switch Databricks CLI profiles to target different workspaces. Override variables at deploy time if needed:
+The DAB has no explicit `dev`/`staging`/`prod` targets — switch Databricks CLI profiles to target different workspaces. Override compute variables at deploy time if needed:
 
 ```bash
-databricks bundle deploy --var catalog=prod_catalog --var schema=prod_schema --var num_workers=8
+databricks bundle deploy --var num_workers=8 --var node_type_id=Standard_E8ds_v5
 ```
 
 ### Step 4 — Run the pipeline
@@ -249,14 +257,14 @@ flowchart LR
 
 ## Configuration
 
-All pipeline behavior is controlled by `config/pipeline_config.yml`. The file has four sections:
+All pipeline behavior is controlled by `config/pipeline_config.yml`. The catalog and schema for all tables and volumes are defined here — not in the bundle variables.
 
 | Section | What it controls |
 |---|---|
+| `storage` | **Catalog, schema**, volume and table names — set these first |
 | `sources` | Where to find documents (one or many entries) |
 | `processing` | Batch size, retries, `ai_parse_document` options |
-| `compute` | Spark version, instance type, worker count |
-| `storage` | Catalog, schema, volume and table names |
+| `compute` | Spark version, instance type, worker count, spark config |
 
 ### Source Configuration
 

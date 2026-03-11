@@ -4,21 +4,23 @@ bundle:
 include:
   - resources/*.yml
 
-# All variables have sensible defaults and can be overridden on the CLI:
-#   databricks bundle deploy --var catalog=prod_catalog --var num_workers=8
-#
 # The workspace is determined by your active Databricks CLI profile:
 #   - Default profile from ~/.databrickscfg is used automatically
 #   - Override with: DATABRICKS_CONFIG_PROFILE=my-profile databricks bundle deploy
 #   - Or set "host" below to pin a specific workspace
+#
+# IMPORTANT: catalog and schema for the pipeline are set in
+# config/pipeline_config.yml under storage.catalog and storage.schema.
+# The bundle variables below are only used for provisioning UC volumes.
+# Keep them in sync with pipeline_config.yml.
 
 variables:
   catalog:
     default: "main"
-    description: "Unity Catalog name"
+    description: "Unity Catalog name (for volume provisioning only — set pipeline catalog in config/pipeline_config.yml)"
   schema:
     default: "doc_processing"
-    description: "Schema for all pipeline tables and volumes"
+    description: "Schema name (for volume provisioning only — set pipeline schema in config/pipeline_config.yml)"
   spark_version:
     default: "17.1.x-scala2.12"
     description: "Databricks Runtime version (must be 17.1+)"
