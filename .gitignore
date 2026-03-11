@@ -1,0 +1,19 @@
+# Cursor
+.cursor/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Databricks
+.databricks/
+
+# OS
+.DS_Store
+Thumbs.db
