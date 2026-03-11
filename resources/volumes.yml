@@ -1,19 +1,21 @@
+# Keep catalog_name and schema_name in sync with
+# config/pipeline_config.yml storage.catalog and storage.schema.
 resources:
   volumes:
     parsed_images:
-      catalog_name: ${var.catalog}
-      schema_name: ${var.schema}
+      catalog_name: "main"
+      schema_name: "doc_processing"
       name: "parsed_images"
       volume_type: "MANAGED"
 
     raw_docs:
-      catalog_name: ${var.catalog}
-      schema_name: ${var.schema}
+      catalog_name: "main"
+      schema_name: "doc_processing"
       name: "raw_docs"
       volume_type: "MANAGED"
 
     staging:
-      catalog_name: ${var.catalog}
-      schema_name: ${var.schema}
+      catalog_name: "main"
+      schema_name: "doc_processing"
       name: "staging"
       volume_type: "MANAGED"

@@ -1,9 +1,13 @@
 # ============================================================
 # Document Processing Pipeline Configuration
 # ============================================================
-# Edit this file to control the pipeline behavior.
-# Placeholders like {catalog} and {schema} are resolved at
-# runtime from Databricks job parameters (set by the DAB).
+# This is the single source of truth for all pipeline settings.
+# Edit this file to set catalog, schema, sources, compute,
+# processing options, and storage configuration.
+#
+# After changing catalog, schema, or compute settings here,
+# also update resources/volumes.yml and
+# resources/doc_processing_job.yml to match, then redeploy.
 # ============================================================
 
 # Define one or more document sources. Each source is synced into

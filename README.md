@@ -62,12 +62,12 @@ Checks `databricks.yml`, job definitions, and volume resources against the works
 databricks bundle deploy
 ```
 
-Deploys the job, volumes, and app to the workspace tied to your active Databricks CLI profile.
+Deploys the job, volumes, and app to the workspace tied to your active Databricks CLI profile. No `--var` flags needed — everything is defined in `config/pipeline_config.yml`.
 
-The DAB has no explicit `dev`/`staging`/`prod` targets — switch Databricks CLI profiles to target different workspaces. Override compute variables at deploy time if needed:
+Switch Databricks CLI profiles to target different workspaces:
 
 ```bash
-databricks bundle deploy --var num_workers=8 --var node_type_id=Standard_E8ds_v5
+DATABRICKS_CONFIG_PROFILE=prod databricks bundle deploy
 ```
 
 ### Step 4 — Run the pipeline
@@ -257,7 +257,9 @@ flowchart LR
 
 ## Configuration
 
-All pipeline behavior is controlled by `config/pipeline_config.yml`. The catalog and schema for all tables and volumes are defined here — not in the bundle variables.
+All pipeline behavior is controlled by `config/pipeline_config.yml`. There are no bundle variables — everything lives in this one file.
+
+After changing `storage.catalog`, `storage.schema`, or `compute` settings, also update `resources/volumes.yml` and `resources/doc_processing_job.yml` to match, then redeploy.
 
 | Section | What it controls |
 |---|---|

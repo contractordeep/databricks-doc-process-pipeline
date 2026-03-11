@@ -9,27 +9,8 @@ include:
 #   - Override with: DATABRICKS_CONFIG_PROFILE=my-profile databricks bundle deploy
 #   - Or set "host" below to pin a specific workspace
 #
-# IMPORTANT: catalog and schema for the pipeline are set in
-# config/pipeline_config.yml under storage.catalog and storage.schema.
-# The bundle variables below are only used for provisioning UC volumes.
-# Keep them in sync with pipeline_config.yml.
-
-variables:
-  catalog:
-    default: "main"
-    description: "Unity Catalog name (for volume provisioning only — set pipeline catalog in config/pipeline_config.yml)"
-  schema:
-    default: "doc_processing"
-    description: "Schema name (for volume provisioning only — set pipeline schema in config/pipeline_config.yml)"
-  spark_version:
-    default: "17.1.x-scala2.12"
-    description: "Databricks Runtime version (must be 17.1+)"
-  node_type_id:
-    default: "Standard_E4ds_v5"
-    description: "Azure VM type for the job cluster (memory-optimized recommended)"
-  num_workers:
-    default: 4
-    description: "Number of workers on the job cluster"
+# All configuration lives in config/pipeline_config.yml.
+# Edit that file to set catalog, schema, compute, sources, and processing options.
 
 targets:
   default:
