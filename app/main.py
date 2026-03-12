@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +11,10 @@ app.include_router(api)
 STATIC_DIR = Path(__file__).parent / "static"
 
 if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    for subdir in ["assets", "cmaps", "standard_fonts"]:
+        d = STATIC_DIR / subdir
+        if d.exists():
+            app.mount(f"/{subdir}", StaticFiles(directory=d), name=subdir)
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):

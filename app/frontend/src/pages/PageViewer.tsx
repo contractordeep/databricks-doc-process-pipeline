@@ -20,8 +20,6 @@ export function PageViewer({ fileName, pageNumber, onBack, onPageChange }: Props
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    setSelectedElement(null);
     Promise.all([
       api.getPage(fileName, pageNumber),
       api.getDocument(fileName),
@@ -47,9 +45,7 @@ export function PageViewer({ fileName, pageNumber, onBack, onPageChange }: Props
 
   return (
     <div className="flex h-full">
-      {/* Main content */}
       <div className="flex-1 overflow-auto p-6">
-        {/* Navigation */}
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={onBack}
@@ -78,37 +74,31 @@ export function PageViewer({ fileName, pageNumber, onBack, onPageChange }: Props
           </div>
         </div>
 
-        {/* Page info */}
         <div className="mb-3 flex items-center gap-4 text-sm text-gray-500">
-          <span>
-            {page.image_width} &times; {page.image_height}px
-          </span>
           <span>{page.elements.length} elements</span>
         </div>
 
-        {/* Color legend */}
         <div className="mb-4">
           <ColorLegend />
         </div>
 
-        {/* Page image with bounding boxes */}
-        {page.image_url ? (
-          <div className="border rounded-lg overflow-auto bg-gray-50 p-4">
+        {page.pdf_url ? (
+          <div className="border rounded-lg bg-gray-50">
             <PageCanvas
-              imageUrl={page.image_url}
-              imageWidth={page.image_width}
-              imageHeight={page.image_height}
+              pdfUrl={page.pdf_url}
+              pageNumber={pageNumber}
+              bboxPageWidth={page.page_width}
+              bboxPageHeight={page.page_height}
               elements={page.elements}
               onElementClick={setSelectedElement}
             />
           </div>
         ) : (
           <div className="border rounded-lg p-12 text-center text-gray-400 bg-gray-50">
-            No page image available
+            No PDF available
           </div>
         )}
 
-        {/* Elements list below the image */}
         <div className="mt-6">
           <h3 className="text-md font-semibold mb-3">
             Elements on this page ({page.elements.length})
@@ -148,7 +138,6 @@ export function PageViewer({ fileName, pageNumber, onBack, onPageChange }: Props
         </div>
       </div>
 
-      {/* Element inspector panel */}
       {selectedElement && (
         <ElementPanel
           element={selectedElement}

@@ -1,4 +1,3 @@
-# Keep cluster settings in sync with config/pipeline_config.yml compute section.
 resources:
   jobs:
     doc_processing_job:
@@ -7,14 +6,14 @@ resources:
       job_clusters:
         - job_cluster_key: "doc_processing_cluster"
           new_cluster:
-            spark_version: "17.1.x-scala2.12"
-            node_type_id: "Standard_E4ds_v5"
-            num_workers: 4
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: ${var.num_workers}
             spark_conf:
               "spark.databricks.sql.variant.enabled": "true"
-              "spark.executor.cores": "2"
-              "spark.task.cpus": "2"
-              "spark.task.maxFailures": "1"
+              "spark.executor.cores": ${var.executor_cores}
+              "spark.task.cpus": ${var.task_cpus}
+              "spark.task.maxFailures": ${var.task_max_failures}
 
       tasks:
         - task_key: "sync_sources"
@@ -22,7 +21,7 @@ resources:
           notebook_task:
             notebook_path: ../src/00_sync_sources.py
             base_parameters:
-              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              config_path: "${workspace.file_path}/config/pipeline_config.yml"
             source: WORKSPACE
 
         - task_key: "ingest_documents"
@@ -32,7 +31,7 @@ resources:
           notebook_task:
             notebook_path: ../src/01_ingest_documents.py
             base_parameters:
-              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              config_path: "${workspace.file_path}/config/pipeline_config.yml"
             source: WORKSPACE
 
         - task_key: "parse_documents"
@@ -42,7 +41,7 @@ resources:
           notebook_task:
             notebook_path: ../src/02_parse_documents.py
             base_parameters:
-              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              config_path: "${workspace.file_path}/config/pipeline_config.yml"
             source: WORKSPACE
 
         - task_key: "flatten_elements"
@@ -52,7 +51,7 @@ resources:
           notebook_task:
             notebook_path: ../src/03_flatten_elements.py
             base_parameters:
-              config_path: "/Workspace/${workspace.file_path}/config/pipeline_config.yml"
+              config_path: "${workspace.file_path}/config/pipeline_config.yml"
             source: WORKSPACE
 
       permissions:

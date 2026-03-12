@@ -26,7 +26,7 @@ import traceback
 
 config_path = dbutils.widgets.get("config_path")
 
-sys.path.insert(0, os.path.dirname(config_path.replace("/Workspace", "/Workspace")))
+sys.path.insert(0, os.path.dirname(os.path.dirname(config_path)))
 from src.utils.config import load_config
 
 config = load_config(config_path)
@@ -181,10 +181,10 @@ for source in config.sources:
                 failed_count += 1
                 print(f"    FAILED {f.file_name}: {file_err}")
 
-    # Write registry rows to the table
+    # Upsert registry rows: update existing documents, insert new ones
     if registry_rows:
         from pyspark.sql.types import (
-            StructType, StructField, StringType, LongType, TimestampType
+            StructType, StructField, StringType, LongType
         )
         from pyspark.sql.functions import current_timestamp
 
@@ -205,7 +205,22 @@ for source in config.sources:
         df = spark.createDataFrame(registry_rows, schema=reg_schema)
         df = df.withColumn("synced_at", current_timestamp())
         df = df.withColumn("registered_at", current_timestamp())
-        df.write.mode("append").saveAsTable(registry_table)
+        df.createOrReplaceTempView("_new_registry_rows")
+
+        spark.sql(f"""
+        MERGE INTO {registry_table} AS target
+        USING _new_registry_rows AS source
+        ON target.document_id = source.document_id
+        WHEN MATCHED THEN UPDATE SET
+          target.staging_path = source.staging_path,
+          target.file_size_bytes = source.file_size_bytes,
+          target.content_hash = source.content_hash,
+          target.sync_status = source.sync_status,
+          target.sync_error = source.sync_error,
+          target.synced_at = source.synced_at,
+          target.pipeline_run_id = source.pipeline_run_id
+        WHEN NOT MATCHED THEN INSERT *
+        """)
 
     sync_stats[source_name] = {
         "listed": len(files),

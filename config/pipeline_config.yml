@@ -1,13 +1,12 @@
 # ============================================================
 # Document Processing Pipeline Configuration
 # ============================================================
-# This is the single source of truth for all pipeline settings.
-# Edit this file to set catalog, schema, sources, compute,
-# processing options, and storage configuration.
+# Runtime settings: catalog, schema, sources, processing options.
+# Compute settings (instance type, workers, spark config) are
+# managed in databricks.yml as bundle variables.
 #
-# After changing catalog, schema, or compute settings here,
-# also update resources/volumes.yml and
-# resources/doc_processing_job.yml to match, then redeploy.
+# After changing catalog or schema, also update
+# resources/volumes.yml to match, then redeploy.
 # ============================================================
 
 # Define one or more document sources. Each source is synced into
@@ -17,20 +16,10 @@
 # Supported types: volume, sharepoint, google_drive, adls
 
 sources:
-  # Volume source with multiple paths (use `paths` for a list, or `path` for one)
-  - name: "invoices"
+  - name: "sample_docs"
     type: "volume"
-    paths:
-      - "/Volumes/{catalog}/{schema}/raw_docs/invoices"
-      - "/Volumes/{catalog}/{schema}/raw_docs/receipts"
+    path: "/Volumes/main/doc_processing/sample_docs/sample"
     file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
-    recursive: true
-
-  # Single-path volume source (use `path` for one)
-  - name: "contracts"
-    type: "volume"
-    path: "/Volumes/{catalog}/{schema}/raw_docs/contracts"
-    file_pattern: "*.{pdf,docx}"
     recursive: true
 
   # --- SharePoint example: multiple folders ---
@@ -85,39 +74,16 @@ processing:
   ai_parse_options:
     version: "2.0"
     description_element_types: "*"
-    save_page_images: true
+    save_page_images: false
 
-compute:
-  spark_version: "17.1.x-scala2.12"
-
-  # Azure instance types (memory-optimized recommended for doc processing):
-  #   Standard_E4ds_v5   —  4 cores,  32 GB  — small loads (< 100 docs)
-  #   Standard_E8ds_v5   —  8 cores,  64 GB  — medium/large loads (100–5000 docs)
-  #   Standard_E16ds_v5  — 16 cores, 128 GB  — very large loads (5000+) or heavy PDFs (50+ pages, > 10 MB avg)
-  node_type_id: "Standard_E4ds_v5"
-
-  # Worker sizing guide:
-  #   < 100 docs        — 2 workers
-  #   100–1,000 docs    — 4 workers
-  #   1,000–5,000 docs  — 8 workers
-  #   5,000+ docs       — 16 workers
-  #   Heavy PDFs (> 10 MB avg) — double the above
-  num_workers: 4
-
-  spark_conf:
-    # Number of cores allocated to each executor process.
-    spark.executor.cores: "2"
-    # Number of cores each individual Spark task consumes.
-    spark.task.cpus: "2"
-    # Number of times a single Spark task can fail before the job is aborted.
-    spark.task.maxFailures: "1"
+# Compute settings (instance type, workers, spark config) are defined
+# in databricks.yml as bundle variables and auto-sync to the job cluster.
 
 # Set your Unity Catalog and schema here. All tables and volumes
 # are created under this catalog.schema namespace.
 storage:
   catalog: "main"
   schema: "doc_processing"
-  image_volume: "parsed_images"
   staging_volume: "staging"
 
   tables:

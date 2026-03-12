@@ -14,7 +14,6 @@ export function DocumentDetail({ fileName, onBack, onPageSelect }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
     api.getDocument(fileName).then((d) => {
       setDoc(d);
       setLoading(false);
@@ -28,7 +27,7 @@ export function DocumentDetail({ fileName, onBack, onPageSelect }: Props) {
         <div className="h-4 w-48 bg-gray-200 rounded" />
         <div className="grid grid-cols-4 gap-4 mt-6">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-48 bg-gray-200 rounded" />
+            <div key={i} className="h-24 bg-gray-200 rounded" />
           ))}
         </div>
       </div>
@@ -44,7 +43,6 @@ export function DocumentDetail({ fileName, onBack, onPageSelect }: Props) {
         &larr; Back to Documents
       </button>
 
-      {/* Header */}
       <div className="bg-white border rounded-lg p-5 mb-6">
         <div className="flex items-start justify-between">
           <div>
@@ -66,7 +64,6 @@ export function DocumentDetail({ fileName, onBack, onPageSelect }: Props) {
           </span>
         </div>
 
-        {/* Stats row */}
         <div className="flex gap-6 mt-4">
           <div className="text-center">
             <div className="text-2xl font-bold text-gray-900">
@@ -82,7 +79,6 @@ export function DocumentDetail({ fileName, onBack, onPageSelect }: Props) {
           </div>
         </div>
 
-        {/* Element type distribution */}
         <div className="flex gap-2 flex-wrap mt-4">
           {(Object.entries(doc.element_types) as [string, number][])
             .sort(([, a], [, b]) => b - a)
@@ -102,34 +98,19 @@ export function DocumentDetail({ fileName, onBack, onPageSelect }: Props) {
         </div>
       </div>
 
-      {/* Page thumbnails */}
       <h2 className="text-lg font-semibold mb-3">Pages</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
         {doc.pages.map((page) => (
           <div
             key={page.page_number}
             onClick={() => onPageSelect(page.page_number)}
-            className="border rounded-lg overflow-hidden hover:shadow-lg cursor-pointer transition-shadow bg-white"
+            className="border rounded-lg p-4 hover:shadow-lg cursor-pointer transition-shadow bg-white text-center"
           >
-            {page.image_uri ? (
-              <img
-                src={api.imageUrl(page.image_uri)}
-                alt={`Page ${page.page_number + 1}`}
-                className="w-full h-48 object-cover object-top bg-gray-100"
-                loading="lazy"
-              />
-            ) : (
-              <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">
-                No image
-              </div>
-            )}
-            <div className="p-2 text-center border-t">
-              <span className="text-sm font-medium">
-                Page {page.page_number + 1}
-              </span>
-              <span className="text-xs text-gray-400 ml-2">
-                {page.element_count} elements
-              </span>
+            <div className="text-2xl font-bold text-gray-400 mb-2">
+              {page.page_number + 1}
+            </div>
+            <div className="text-xs text-gray-500">
+              {page.element_count} elements
             </div>
           </div>
         ))}

@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from datetime import datetime
 from typing import Optional
 
 
@@ -18,21 +17,21 @@ class ElementOut(BaseModel):
 
 class PageOut(BaseModel):
     page_number: int
-    image_uri: str = ""
     element_count: int = 0
 
 
 class PageDetailOut(BaseModel):
     page_number: int
-    image_url: str
-    image_width: int = 0
-    image_height: int = 0
+    pdf_url: str = ""
+    page_width: int = 0
+    page_height: int = 0
     elements: list[ElementOut] = []
 
 
 class DocumentListOut(BaseModel):
     file_name: str
     source_name: str = ""
+    source_path: str = ""
     total_elements: int = 0
     total_pages: int = 0
     status: str = "unknown"
@@ -43,6 +42,7 @@ class DocumentListOut(BaseModel):
 class DocumentDetailOut(BaseModel):
     file_name: str
     source_name: str = ""
+    source_path: str = ""
     total_elements: int = 0
     total_pages: int = 0
     status: str = "unknown"

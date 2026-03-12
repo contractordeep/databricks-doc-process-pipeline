@@ -25,7 +25,7 @@ import sys
 
 config_path = dbutils.widgets.get("config_path")
 
-sys.path.insert(0, os.path.dirname(config_path.replace("/Workspace", "/Workspace")))
+sys.path.insert(0, os.path.dirname(os.path.dirname(config_path)))
 from src.utils.config import load_config
 
 config = load_config(config_path)
@@ -90,53 +90,30 @@ print("Tables ensured.")
 
 registry_table = config.fqn(config.storage.tables.document_registry)
 raw_table = config.fqn(config.storage.tables.raw_documents)
-staging_base = f"/Volumes/{config.catalog}/{config.schema}/{config.storage.staging_volume}"
+parsed_table = config.fqn(config.storage.tables.parsed_documents)
 
-# Collect all distinct staging directories from the registry for this run
-staging_dirs = spark.sql(f"""
-  SELECT DISTINCT source_name, source_type, staging_path
-  FROM {registry_table}
+total_synced_count = spark.sql(f"""
+  SELECT COUNT(*) AS cnt FROM {registry_table}
   WHERE pipeline_run_id = '{run_id}' AND sync_status = 'synced'
+""").collect()[0]["cnt"]
+
+synced_files = spark.sql(f"""
+  SELECT r.source_name, r.staging_path, r.file_name, r.file_size_bytes
+  FROM {registry_table} r
+  WHERE r.pipeline_run_id = '{run_id}'
+    AND r.sync_status = 'synced'
+    AND r.content_hash NOT IN (
+      SELECT DISTINCT reg.content_hash
+      FROM {parsed_table} pd
+      JOIN {registry_table} reg ON pd.source_path = reg.staging_path
+      WHERE reg.content_hash IS NOT NULL
+    )
 """).collect()
 
-# Build a set of all staging root directories to scan
-# For volume sources, staging_path is the original path (could be anywhere)
-# For external sources, staging_path is under the staging volume
+skipped = total_synced_count - len(synced_files)
+print(f"Synced files: {total_synced_count} | Already parsed (skipped): {skipped} | To process: {len(synced_files)}")
 
-# Group staging paths by their parent directories for efficient read_files calls
-from collections import defaultdict
-source_dirs = defaultdict(set)
-for row in staging_dirs:
-    parent = os.path.dirname(row["staging_path"])
-    source_dirs[row["source_name"]].add(parent)
-
-union_parts = []
-for source_name, dirs in source_dirs.items():
-    for d in dirs:
-        union_parts.append(f"""
-        SELECT
-          '{source_name}' AS source_name,
-          _metadata.file_path AS source_path,
-          _metadata.file_name AS file_name,
-          _metadata.file_size AS file_size_bytes,
-          _metadata.file_modification_time AS source_modified_at,
-          content,
-          current_timestamp() AS ingested_at,
-          '{run_id}' AS pipeline_run_id
-        FROM read_files(
-          '{d}',
-          format => 'binaryFile',
-          recursiveFileLookup => false
-        )
-        WHERE _metadata.file_path IN (
-          SELECT staging_path FROM {registry_table}
-          WHERE pipeline_run_id = '{run_id}'
-            AND sync_status = 'synced'
-            AND source_name = '{source_name}'
-        )
-        """)
-
-if not union_parts:
+if not synced_files:
     print("WARNING: No synced documents found in registry. raw_documents will be empty.")
     spark.sql(f"""
     CREATE OR REPLACE TABLE {raw_table} (
@@ -151,6 +128,23 @@ if not union_parts:
     )
     """)
 else:
+    union_parts = []
+    for row in synced_files:
+        path = row["staging_path"].replace("'", "''")
+        src = row["source_name"].replace("'", "''")
+        union_parts.append(f"""
+        SELECT
+          '{src}' AS source_name,
+          '{path}' AS source_path,
+          '{row["file_name"].replace("'", "''")}' AS file_name,
+          {row["file_size_bytes"]} AS file_size_bytes,
+          _metadata.file_modification_time AS source_modified_at,
+          content,
+          current_timestamp() AS ingested_at,
+          '{run_id}' AS pipeline_run_id
+        FROM read_files('{path}', format => 'binaryFile')
+        """)
+
     union_sql = "\n        UNION ALL\n".join(union_parts)
     spark.sql(f"""
     CREATE OR REPLACE TABLE {raw_table} AS

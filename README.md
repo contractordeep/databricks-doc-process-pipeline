@@ -8,6 +8,8 @@ Extract text, tables, figures, and layout from documents at scale on Databricks�
 - [Architecture](#architecture)
 - [Repository Structure](#repository-structure)
 - [Configuration](#configuration)
+  - [Runtime Config](#runtime-config-pipelineconfigyml)
+  - [Compute Config](#compute-config-databricksyml)
   - [Sources](#source-configuration)
   - [Authentication](#authentication)
 - [Pipeline Stages](#pipeline-stages)
@@ -28,17 +30,15 @@ Prerequisites: Databricks CLI configured, Runtime 17.1+, Unity Catalog enabled, 
 git clone <repo-url> && cd databricks-doc-process-pipeline
 ```
 
-Edit `config/pipeline_config.yml`. First, set your Unity Catalog and schema under `storage`:
+Edit two files:
+
+**`config/pipeline_config.yml`** — set your catalog, schema, and document sources:
 
 ```yaml
 storage:
   catalog: "my_catalog"
   schema: "my_schema"
-```
 
-Then configure your document sources:
-
-```yaml
 sources:
   - name: "my_docs"
     type: "volume"
@@ -47,6 +47,15 @@ sources:
     file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
     recursive: true
 ```
+
+**`resources/volumes.yml`** — set the same catalog and schema for volume provisioning:
+
+```yaml
+catalog_name: "my_catalog"
+schema_name: "my_schema"
+```
+
+**`databricks.yml`** — optionally adjust compute settings (instance type, workers, spark config). Defaults work for small loads.
 
 ### Step 2 — Validate
 
@@ -62,12 +71,10 @@ Checks `databricks.yml`, job definitions, and volume resources against the works
 databricks bundle deploy
 ```
 
-Deploys the job, volumes, and app to the workspace tied to your active Databricks CLI profile. No `--var` flags needed — everything is defined in `config/pipeline_config.yml`.
-
-Switch Databricks CLI profiles to target different workspaces:
+Deploys the job, volumes, and app to the workspace tied to your active Databricks CLI profile. Switch profiles to target different workspaces:
 
 ```bash
-DATABRICKS_CONFIG_PROFILE=prod databricks bundle deploy
+databricks bundle deploy --profile prod
 ```
 
 ### Step 4 — Run the pipeline
@@ -78,32 +85,35 @@ databricks bundle run doc_processing_job
 
 This triggers a four-task job:
 
-1. **Sync sources** — downloads external files to a staging volume, registers all files in `document_registry`
-2. **Ingest documents** — loads binary content into `raw_documents`
-3. **Parse documents** — calls `ai_parse_document` in batches, writes results to `parsed_documents` and page images to the `parsed_images` volume
-4. **Flatten elements** — explodes parsed output into `document_elements` and `document_pages`
+1. **Sync sources** — discovers files, downloads external ones to a staging volume, upserts `document_registry`
+2. **Ingest documents** — skips already-parsed documents (by `content_hash`), loads new/changed files into `raw_documents`
+3. **Parse documents** — calls `ai_parse_document` in batches across executors, writes `parsed_documents`. Exits early if nothing to parse
+4. **Flatten elements** — explodes parsed output into `document_elements` and `document_pages`. Incrementally inserts new results, preserves existing ones
 
-### Step 5 — Inspect results in the viewer app
+Re-running the pipeline on the same documents is safe — unchanged files are skipped automatically.
+
+### Step 5 — Start the viewer app
 
 Set the environment variables in `app/app.yaml` for your workspace:
 
 ```yaml
 env:
   - name: DATABRICKS_WAREHOUSE_ID
-    value: "your-warehouse-id"
+    valueFrom: "sql-warehouse"
   - name: DATABRICKS_CATALOG
     value: "my_catalog"
   - name: DATABRICKS_SCHEMA
     value: "my_schema"
 ```
 
-Then redeploy and open the app:
+Deploy and start the app:
 
 ```bash
 databricks bundle deploy
+databricks bundle run doc_viewer
 ```
 
-Open the Databricks App from your workspace UI. You can browse documents, view page images, and inspect bounding boxes for every extracted element.
+Open the Databricks App URL from your workspace UI. You can browse documents, view rendered PDF pages, and inspect bounding boxes for every extracted element.
 
 ### Updating the frontend
 
@@ -115,7 +125,7 @@ bun install
 bun run build
 ```
 
-Then run `databricks bundle deploy` again.
+Then run `databricks bundle deploy` and `databricks bundle run doc_viewer` again.
 
 ## Architecture
 
@@ -157,7 +167,6 @@ flowchart TB
     RAW --> BATCH
     BATCH --> AIP
     AIP --> PARSED[(parsed_documents)]
-    AIP --> IMGVOL[("parsed_images volume")]
     PARSED --> EXPLODE
     EXPLODE --> DE[(document_elements)]
     EXPLODE --> DP[(document_pages)]
@@ -167,13 +176,11 @@ flowchart TB
     classDef stage fill:#FF3621,stroke:#1B3139,color:#fff
     classDef table fill:#1B3139,stroke:#09AA82,color:#fff
     classDef gold fill:#09AA82,stroke:#1B3139,color:#fff
-    classDef volume fill:#2272B4,stroke:#1B3139,color:#fff
 
     class VOL,SP,GD,ADLS source
     class CONN,STAGE,RF,BATCH,AIP,EXPLODE stage
     class REG,RAW,PARSED,LOG table
     class DE,DP gold
-    class IMGVOL volume
 
     style Sources fill:#1B3139,stroke:#09AA82,color:#fff
     style Sync fill:#1B3139,stroke:#FF3621,color:#fff
@@ -191,24 +198,24 @@ flowchart LR
         DE[(document_elements)]
         DP[(document_pages)]
         LOG[(processing_log)]
-        IMGVOL[("parsed_images volume")]
+        SRCVOL[("Source Volumes")]
     end
 
     subgraph App["Databricks App"]
         subgraph Backend["FastAPI Backend"]
-            API["/api/documents, pages, stats, images"]
+            API["/api/documents, pages, stats, pdf"]
         end
 
-        subgraph Frontend["React + Tailwind"]
+        subgraph Frontend["React + pdf.js + Tailwind"]
             DASH["Dashboard"]
             LIST["Document List"]
             DETAIL["Document Detail"]
-            PAGE["Page Viewer BBox Overlays"]
+            PAGE["PDF Viewer + BBox Overlays"]
         end
     end
 
     DE & DP & LOG -->|"databricks-sql-connector"| API
-    IMGVOL -->|"file read"| API
+    SRCVOL -->|"SDK Files API"| API
     API --> DASH & LIST & DETAIL & PAGE
 
     classDef table fill:#1B3139,stroke:#09AA82,color:#fff
@@ -217,7 +224,7 @@ flowchart LR
     classDef frontend fill:#FFB02E,stroke:#1B3139,color:#1B3139
 
     class DE,DP,LOG table
-    class IMGVOL volume
+    class SRCVOL volume
     class API backend
     class DASH,LIST,DETAIL,PAGE frontend
 
@@ -241,8 +248,7 @@ flowchart LR
 ├── config/
 │   └── pipeline_config.yml      # Pipeline configuration
 ├── resources/
-│   ├── doc_processing_job.yml   # DAB job definition
-│   ├── doc_viewer_app.yml       # DAB app definition
+│   ├── doc_processing_job.yml   # DAB job definition (uses bundle variables)
 │   └── volumes.yml              # UC managed volumes
 ├── src/
 │   ├── 00_sync_sources.py       # Task 1: sync + register files
@@ -251,22 +257,41 @@ flowchart LR
 │   ├── 03_flatten_elements.py   # Task 4: explode into gold tables
 │   ├── connectors/              # Source connectors (volume, SP, GD, ADLS)
 │   └── utils/                   # Config loader
-├── databricks.yml               # DAB root config
+├── databricks.yml               # DAB root config + compute variables + app definition
 └── README.md
 ```
 
 ## Configuration
 
-All pipeline behavior is controlled by `config/pipeline_config.yml`. There are no bundle variables — everything lives in this one file.
+Settings are split between two files based on when they're needed:
 
-After changing `storage.catalog`, `storage.schema`, or `compute` settings, also update `resources/volumes.yml` and `resources/doc_processing_job.yml` to match, then redeploy.
+| File | What | When read |
+|---|---|---|
+| `config/pipeline_config.yml` | Catalog, schema, sources, processing options | Runtime (by notebooks) |
+| `databricks.yml` | Instance type, workers, spark config | Deploy time (by DAB) |
+
+After changing `storage.catalog` or `storage.schema` in the config, also update `resources/volumes.yml` to match.
+
+### Runtime Config (`pipeline_config.yml`)
 
 | Section | What it controls |
 |---|---|
 | `storage` | **Catalog, schema**, volume and table names — set these first |
 | `sources` | Where to find documents (one or many entries) |
 | `processing` | Batch size, retries, `ai_parse_document` options |
-| `compute` | Spark version, instance type, worker count, spark config |
+
+### Compute Config (`databricks.yml`)
+
+Compute settings are defined as bundle variables and auto-sync to the job cluster on deploy.
+
+| Variable | Default | Description |
+|---|---|---|
+| `spark_version` | `17.3.x-scala2.13` | Databricks Runtime version |
+| `node_type_id` | `Standard_E4ds_v5` | Azure VM type (E4=32GB, E8=64GB, E16=128GB) |
+| `num_workers` | `4` | Number of worker nodes |
+| `executor_cores` | `2` | Cores per executor (`spark.executor.cores`) |
+| `task_cpus` | `2` | Cores per Spark task (`spark.task.cpus`) |
+| `task_max_failures` | `1` | Fail fast, let notebook retry logic handle retries |
 
 ### Source Configuration
 
@@ -350,28 +375,28 @@ The pipeline runs as a single Databricks Job with four sequential tasks on a sha
 - Reads each source from the config
 - Uses the matching connector in `src/connectors/`
 - Downloads external files to the `staging` volume; volume-backed files stay in place
-- Registers every file in the `document_registry` table with metadata and sync status
+- Upserts `document_registry` via `MERGE` on `document_id` — no duplicate rows on re-runs
 
 ### Task 2 — Ingest Documents (`01_ingest_documents.py`)
 
 - Queries `document_registry` for synced files from the current run
-- Loads binary content with `read_files(..., format => 'binaryFile')`
-- Writes `raw_documents` table
+- Skips documents whose `content_hash` already exists in `parsed_documents` (incremental)
+- Loads only new/changed files into `raw_documents`
 - Initializes `processing_log` with one queued row per document
 
 ### Task 3 — Parse Documents (`02_parse_documents.py`)
 
+- Exits early if all documents are already parsed (`raw_count = 0`)
 - Assigns documents to equal-sized batches ordered by file size
 - Calls `ai_parse_document(content, map(...))` per batch via Spark SQL
 - Stores full `VARIANT` results in `parsed_documents`
-- Saves rendered page images to the `parsed_images` volume
 - Retries failed batches with exponential backoff
 
 ### Task 4 — Flatten Elements (`03_flatten_elements.py`)
 
-- Explodes `parsed_output:document:elements` into rows
-- Explodes each element's `bbox` array (one row per bounding box)
-- Writes `document_elements` and `document_pages` gold tables
+- Exits early if no new documents were parsed
+- Deletes stale rows for re-processed documents (handles changed content)
+- Inserts new results into `document_elements` and `document_pages` (preserves existing)
 - Propagates parse error flags (`has_parse_errors`, `page_has_error`)
 
 ## Distributed Batch Processing
@@ -469,7 +494,6 @@ Each executor calls `ai_parse_document(content, map(...))` on its assigned rows.
 
 - Accepts binary document content and a map of options
 - Returns a `VARIANT` containing `document.elements`, `document.pages`, `error_status`, and `metadata`
-- Optionally saves rendered page images to a UC Volume (`imageOutputPath`)
 - Generates AI descriptions for elements when `descriptionElementTypes` is set
 
 ### Retry Behavior
@@ -489,7 +513,6 @@ Defined in `resources/volumes.yml`:
 |---|---|
 | `raw_docs` | User-uploaded documents before processing |
 | `staging` | Files downloaded from external sources (SharePoint, Google Drive, ADLS) |
-| `parsed_images` | Rendered page images produced by `ai_parse_document` |
 
 ### Tables
 
@@ -553,7 +576,7 @@ Created by `01_ingest_documents.py`, populated by `02_parse_documents.py`. One r
 The `parsed_output` VARIANT contains:
 
 - `parsed_output:document:elements` — array of extracted elements (text, title, figure, table, header, footer, caption, footnote, page_header, page_footer)
-- `parsed_output:document:pages` — array of page metadata with `id` and `image_uri`
+- `parsed_output:document:pages` — array of page metadata with `id`
 - `parsed_output:error_status` — array of page-level parse errors (empty when successful)
 - `parsed_output:metadata` — document-level metadata
 
@@ -597,7 +620,6 @@ Created by `03_flatten_elements.py`. One row per page per document. Clustered by
 | `source_path` | `STRING` | File path of the parsed document |
 | `file_name` | `STRING` | Base file name |
 | `page_number` | `INT` | Page index from the parsed output |
-| `image_uri` | `STRING` | Absolute path to the rendered page image in `/Volumes/{catalog}/{schema}/parsed_images/` |
 | `has_parse_errors` | `BOOLEAN` | `true` if the document had any parse errors |
 | `page_has_error` | `BOOLEAN` | `true` if this specific page had an error in `error_status` |
 | `parsed_at` | `TIMESTAMP` | When parsing completed |
@@ -628,19 +650,19 @@ Created by `01_ingest_documents.py`, updated by `02_parse_documents.py` and `03_
 
 ## Document Viewer App
 
-The app lives in `app/` and is deployed through `resources/doc_viewer_app.yml`.
+The app lives in `app/` and is defined in `databricks.yml` as a bundle resource. The original PDF is served from the source volume via the Databricks SDK Files API and rendered in the browser using pdf.js. No page images are stored.
 
 | Layer | Stack |
 |---|---|
-| Backend | FastAPI, `databricks-sql-connector`, reads page images from `/Volumes/...` |
-| Frontend | React + TypeScript + Vite, Tailwind CSS |
+| Backend | FastAPI, `databricks-sql-connector`, `databricks-sdk` (Files API to serve PDFs) |
+| Frontend | React + TypeScript + Vite + react-pdf (pdf.js), Tailwind CSS |
 
 Features:
 
 - Dashboard with corpus-level stats (documents, pages, elements, type distribution)
 - Document list with search and filtering
-- Document detail view with page thumbnails
-- Page viewer with interactive, color-coded bounding box overlays
+- Document detail view with page navigation
+- In-browser PDF rendering with interactive, color-coded bounding box overlays
 - Element inspection panel showing content, AI description, and coordinates
 - Table content rendered as HTML; figure descriptions displayed inline
 
@@ -651,5 +673,5 @@ Features:
 - Dense or low-quality documents may parse slowly
 - Documents with digital signatures may parse inaccurately
 - Figure descriptions require `descriptionElementTypes` to be set in config
-- The app serves rendered page images, not cropped per-element figure images
+- The app renders the original PDF in-browser; no page images are stored
 - Individual elements may have multiple bounding boxes; the pipeline preserves them with one row per bbox

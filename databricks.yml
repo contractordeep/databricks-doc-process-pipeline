@@ -1,16 +1,54 @@
 bundle:
   name: doc-processing-pipeline
 
+sync:
+  exclude:
+    - app/frontend/**
+    - "**/__pycache__/**"
+    - "**/.DS_Store"
+
 include:
   - resources/*.yml
 
 # The workspace is determined by your active Databricks CLI profile:
 #   - Default profile from ~/.databrickscfg is used automatically
 #   - Override with: DATABRICKS_CONFIG_PROFILE=my-profile databricks bundle deploy
-#   - Or set "host" below to pin a specific workspace
 #
-# All configuration lives in config/pipeline_config.yml.
-# Edit that file to set catalog, schema, compute, sources, and processing options.
+# Compute settings are defined here as variables and auto-sync to the job cluster.
+# Runtime config (catalog, schema, sources, processing) lives in config/pipeline_config.yml.
+
+variables:
+  spark_version:
+    default: "17.3.x-scala2.13"
+    description: "Databricks Runtime version"
+  node_type_id:
+    default: "Standard_E4ds_v5"
+    description: "Azure VM type (Standard_E4ds_v5, Standard_E8ds_v5, Standard_E16ds_v5)"
+  num_workers:
+    default: 4
+    description: "Number of worker nodes"
+  executor_cores:
+    default: "2"
+    description: "Cores per executor (spark.executor.cores)"
+  task_cpus:
+    default: "2"
+    description: "Cores per Spark task (spark.task.cpus)"
+  task_max_failures:
+    default: "1"
+    description: "Max task failures before job aborts (spark.task.maxFailures)"
+
+resources:
+  apps:
+    doc_viewer:
+      name: doc-viewer
+      description: "Browse and inspect processed documents with bounding box overlays"
+      source_code_path: ./app
+
+      resources:
+        - name: "sql-warehouse"
+          sql_warehouse:
+            id: "40ff4a2c8fd4306a"
+            permission: "CAN_USE"
 
 targets:
   default:

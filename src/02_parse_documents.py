@@ -27,7 +27,7 @@ import traceback
 
 config_path = dbutils.widgets.get("config_path")
 
-sys.path.insert(0, os.path.dirname(config_path.replace("/Workspace", "/Workspace")))
+sys.path.insert(0, os.path.dirname(os.path.dirname(config_path)))
 from src.utils.config import load_config
 
 config = load_config(config_path)
@@ -37,6 +37,12 @@ raw_count = dbutils.jobs.taskValues.get(taskKey="ingest_documents", key="raw_cou
 
 print(f"Pipeline run ID: {run_id}")
 print(f"Documents to parse: {raw_count}")
+
+if raw_count == 0:
+    print("All documents already parsed. Nothing to do.")
+    dbutils.jobs.taskValues.set(key="run_id", value=run_id)
+    dbutils.jobs.taskValues.set(key="total_parsed", value=0)
+    dbutils.notebook.exit("skip")
 
 # COMMAND ----------
 
@@ -210,8 +216,8 @@ MERGE INTO {log_table} AS log
 USING (
   SELECT
     source_path,
-    try_size(parsed_output:document:elements) AS elem_count,
-    try_size(parsed_output:document:pages) AS page_count
+    SIZE(CAST(parsed_output:document:elements AS ARRAY<STRING>)) AS elem_count,
+    SIZE(CAST(parsed_output:document:pages AS ARRAY<STRING>)) AS page_count
   FROM {parsed_table}
   WHERE pipeline_run_id = '{run_id}'
 ) AS counts
@@ -242,7 +248,7 @@ error_docs = spark.sql(f"""
   SELECT COUNT(*) AS cnt FROM {parsed_table}
   WHERE pipeline_run_id = '{run_id}'
     AND parsed_output:error_status IS NOT NULL
-    AND try_size(parsed_output:error_status) > 0
+    AND SIZE(CAST(parsed_output:error_status AS ARRAY<STRING>)) > 0
 """).collect()[0]["cnt"]
 
 print(f"--- Parse Summary ---")

@@ -13,21 +13,21 @@ export interface ElementOut {
 
 export interface PageOut {
   page_number: number;
-  image_uri: string;
   element_count: number;
 }
 
 export interface PageDetailOut {
   page_number: number;
-  image_url: string;
-  image_width: number;
-  image_height: number;
+  pdf_url: string;
+  page_width: number;
+  page_height: number;
   elements: ElementOut[];
 }
 
 export interface DocumentListOut {
   file_name: string;
   source_name: string;
+  source_path: string;
   total_elements: number;
   total_pages: number;
   status: string;
@@ -66,5 +66,5 @@ export const api = {
       `${BASE}/documents/${encodeURIComponent(fileName)}/pages/${pageNumber}`
     ),
   getStats: () => fetchJson<StatsOut>(`${BASE}/stats`),
-  imageUrl: (path: string) => `${BASE}/images?path=${encodeURIComponent(path)}`,
+  pdfUrl: (path: string) => `${BASE}/pdf?path=${encodeURIComponent(path)}`,
 };

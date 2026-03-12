@@ -1,8 +1,7 @@
 import os
 import mimetypes
-from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
 from .models import (
     DocumentListOut,
@@ -27,6 +26,7 @@ async def list_documents():
         SELECT
             e.file_name,
             e.source_name,
+            e.source_path,
             COUNT(DISTINCT e.element_id) AS total_elements,
             COALESCE(p.total_pages, 0) AS total_pages,
             COALESCE(l.status, 'unknown') AS status,
@@ -42,7 +42,7 @@ async def list_documents():
             FROM {log_table}
             GROUP BY file_name
         ) l ON e.file_name = l.file_name
-        GROUP BY e.file_name, e.source_name, p.total_pages, l.status
+        GROUP BY e.file_name, e.source_name, e.source_path, p.total_pages, l.status
         ORDER BY parsed_at DESC
     """)
 
@@ -59,6 +59,7 @@ async def list_documents():
         results.append(DocumentListOut(
             file_name=r["file_name"],
             source_name=r.get("source_name", ""),
+            source_path=r.get("source_path", ""),
             total_elements=r["total_elements"],
             total_pages=r["total_pages"],
             status=r.get("status", "unknown"),
@@ -89,7 +90,6 @@ async def get_document(file_name: str):
     page_rows = execute_query(f"""
         SELECT
             page_number,
-            COALESCE(image_uri, '') AS image_uri,
             COALESCE(ec.cnt, 0) AS element_count
         FROM {pages_table} pg
         LEFT JOIN (
@@ -105,7 +105,6 @@ async def get_document(file_name: str):
     pages = [
         PageOut(
             page_number=r["page_number"],
-            image_uri=r["image_uri"],
             element_count=r["element_count"],
         )
         for r in page_rows
@@ -113,17 +112,19 @@ async def get_document(file_name: str):
 
     status_rows = execute_query(f"""
         SELECT MAX(status) AS status, CAST(MAX(completed_at) AS STRING) AS parsed_at,
-               MAX(source_name) AS source_name
+               MAX(source_name) AS source_name, MAX(source_path) AS source_path
         FROM {log_table}
         WHERE file_name = '{file_name}'
     """)
     status = status_rows[0].get("status", "unknown") if status_rows else "unknown"
     parsed_at = status_rows[0].get("parsed_at") if status_rows else None
     source_name = status_rows[0].get("source_name", "") if status_rows else ""
+    source_path = status_rows[0].get("source_path", "") if status_rows else ""
 
     return DocumentDetailOut(
         file_name=file_name,
         source_name=source_name,
+        source_path=source_path,
         total_elements=total_elements,
         total_pages=len(pages),
         status=status,
@@ -141,26 +142,37 @@ async def get_document(file_name: str):
 async def get_page(file_name: str, page_number: int):
     elements_table = fqn("document_elements")
     pages_table = fqn("document_pages")
+    log_table = fqn("processing_log")
+
+    parsed_table = fqn("parsed_documents")
 
     page_rows = execute_query(f"""
-        SELECT page_number, COALESCE(image_uri, '') AS image_uri
+        SELECT page_number
         FROM {pages_table}
         WHERE file_name = '{file_name}' AND page_number = {page_number}
     """)
     if not page_rows:
         raise HTTPException(status_code=404, detail="Page not found")
 
-    image_uri = page_rows[0]["image_uri"]
-    image_url = f"/api/images?path={image_uri}" if image_uri else ""
+    source_rows = execute_query(f"""
+        SELECT MAX(source_path) AS source_path FROM {log_table}
+        WHERE file_name = '{file_name}'
+    """)
+    source_path = source_rows[0]["source_path"] if source_rows else ""
+    pdf_url = f"/api/pdf?path={source_path}" if source_path else ""
 
-    image_width, image_height = 0, 0
-    if image_uri and os.path.exists(image_uri):
-        try:
-            from PIL import Image
-            with Image.open(image_uri) as img:
-                image_width, image_height = img.size
-        except Exception:
-            pass
+    page_dim_rows = execute_query(f"""
+        SELECT
+            page.value:width::INT AS page_width,
+            page.value:height::INT AS page_height
+        FROM {parsed_table} p,
+            LATERAL VARIANT_EXPLODE(p.parsed_output:document:pages) AS page
+        WHERE p.file_name = '{file_name}'
+            AND page.value:id::INT = {page_number}
+        LIMIT 1
+    """)
+    page_width = page_dim_rows[0]["page_width"] if page_dim_rows and page_dim_rows[0]["page_width"] else 0
+    page_height = page_dim_rows[0]["page_height"] if page_dim_rows and page_dim_rows[0]["page_height"] else 0
 
     elem_rows = execute_query(f"""
         SELECT
@@ -196,23 +208,32 @@ async def get_page(file_name: str, page_number: int):
 
     return PageDetailOut(
         page_number=page_number,
-        image_url=image_url,
-        image_width=image_width,
-        image_height=image_height,
+        pdf_url=pdf_url,
+        page_width=page_width,
+        page_height=page_height,
         elements=elements,
     )
 
 
-@api.get("/images", operation_id="getImage")
-async def get_image(path: str = Query(...)):
-    if not path or not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Image not found")
+@api.get("/pdf", operation_id="getPdf")
+async def get_pdf(path: str = Query(...)):
+    if not path:
+        raise HTTPException(status_code=404, detail="PDF not found")
 
-    mime_type, _ = mimetypes.guess_type(path)
-    if mime_type is None:
-        mime_type = "image/png"
+    from databricks.sdk import WorkspaceClient
 
-    return FileResponse(path, media_type=mime_type)
+    try:
+        w = WorkspaceClient()
+        resp = w.files.download(path)
+        pdf_bytes = resp.contents.read()
+
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type is None:
+            mime_type = "application/pdf"
+
+        return Response(content=pdf_bytes, media_type=mime_type)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"File not found: {e}")
 
 
 @api.get("/stats", response_model=StatsOut, operation_id="getStats")

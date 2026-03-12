@@ -24,7 +24,7 @@ import sys
 
 config_path = dbutils.widgets.get("config_path")
 
-sys.path.insert(0, os.path.dirname(config_path.replace("/Workspace", "/Workspace")))
+sys.path.insert(0, os.path.dirname(os.path.dirname(config_path)))
 from src.utils.config import load_config
 
 config = load_config(config_path)
@@ -34,6 +34,10 @@ total_parsed = dbutils.jobs.taskValues.get(taskKey="parse_documents", key="total
 
 print(f"Pipeline run ID: {run_id}")
 print(f"Documents to flatten: {total_parsed}")
+
+if total_parsed == 0:
+    print("No new documents to flatten. Nothing to do.")
+    dbutils.notebook.exit("skip")
 
 # COMMAND ----------
 
@@ -48,9 +52,40 @@ pages_table = config.fqn(config.storage.tables.document_pages)
 log_table = config.fqn(config.storage.tables.processing_log)
 
 spark.sql(f"""
-CREATE OR REPLACE TABLE {elements_table}
+CREATE TABLE IF NOT EXISTS {elements_table} (
+  source_name STRING,
+  source_path STRING,
+  file_name STRING,
+  element_id INT,
+  element_type STRING,
+  content STRING,
+  ai_description STRING,
+  bounding_box_json STRING,
+  page_id INT,
+  bbox_index INT,
+  bbox_x1 INT,
+  bbox_y1 INT,
+  bbox_x2 INT,
+  bbox_y2 INT,
+  has_parse_errors BOOLEAN,
+  parsed_at TIMESTAMP,
+  pipeline_run_id STRING
+)
 CLUSTER BY (source_name, file_name, page_id)
-AS
+""")
+
+# Remove stale rows for documents being re-processed (handles changed content)
+docs_in_run = spark.sql(f"""
+  SELECT DISTINCT source_path FROM {parsed_table} WHERE pipeline_run_id = '{run_id}'
+""").collect()
+if docs_in_run:
+    paths = [row["source_path"].replace("'", "''") for row in docs_in_run]
+    source_paths = ", ".join(f"'{p}'" for p in paths)
+    spark.sql(f"DELETE FROM {elements_table} WHERE source_path IN ({source_paths})")
+    print(f"Cleared stale element rows for {len(docs_in_run)} documents.")
+
+spark.sql(f"""
+INSERT INTO {elements_table}
 SELECT
   p.source_name,
   p.source_path,
@@ -68,7 +103,7 @@ SELECT
   bb.value:coord[3]::INT AS bbox_y2,
   CASE
     WHEN p.parsed_output:error_status IS NOT NULL
-     AND try_size(p.parsed_output:error_status) > 0
+     AND SIZE(CAST(p.parsed_output:error_status AS ARRAY<STRING>)) > 0
     THEN true ELSE false
   END AS has_parse_errors,
   p.parsed_at,
@@ -80,7 +115,7 @@ WHERE p.pipeline_run_id = '{run_id}'
 """)
 
 element_count = spark.table(elements_table).filter(f"pipeline_run_id = '{run_id}'").count()
-print(f"Created {elements_table} with {element_count} elements.")
+print(f"Inserted {element_count} elements into {elements_table}.")
 
 # COMMAND ----------
 
@@ -90,9 +125,27 @@ print(f"Created {elements_table} with {element_count} elements.")
 # COMMAND ----------
 
 spark.sql(f"""
-CREATE OR REPLACE TABLE {pages_table}
+CREATE TABLE IF NOT EXISTS {pages_table} (
+  source_name STRING,
+  source_path STRING,
+  file_name STRING,
+  page_number INT,
+  image_uri STRING,
+  has_parse_errors BOOLEAN,
+  page_has_error BOOLEAN,
+  parsed_at TIMESTAMP,
+  pipeline_run_id STRING
+)
 CLUSTER BY (source_name, file_name)
-AS
+""")
+
+# Remove stale rows for documents being re-processed
+if docs_in_run:
+    spark.sql(f"DELETE FROM {pages_table} WHERE source_path IN ({source_paths})")
+    print(f"Cleared stale page rows for {len(docs_in_run)} documents.")
+
+spark.sql(f"""
+INSERT INTO {pages_table}
 SELECT
   p.source_name,
   p.source_path,
@@ -101,22 +154,32 @@ SELECT
   page.value:image_uri::STRING AS image_uri,
   CASE
     WHEN p.parsed_output:error_status IS NOT NULL
-     AND try_size(p.parsed_output:error_status) > 0
+     AND SIZE(CAST(p.parsed_output:error_status AS ARRAY<STRING>)) > 0
     THEN true ELSE false
   END AS has_parse_errors,
-  EXISTS(
-    SELECT 1 FROM VARIANT_EXPLODE(p.parsed_output:error_status) es
-    WHERE es.value:page_id::INT = page.value:id::INT
-  ) AS page_has_error,
+  CASE
+    WHEN err.error_page_id IS NOT NULL THEN true
+    ELSE false
+  END AS page_has_error,
   p.parsed_at,
   p.pipeline_run_id
 FROM {parsed_table} p,
   LATERAL VARIANT_EXPLODE(p.parsed_output:document:pages) AS page
+LEFT JOIN (
+  SELECT
+    pe.source_path,
+    es.value:page_id::INT AS error_page_id
+  FROM {parsed_table} pe,
+    LATERAL VARIANT_EXPLODE(pe.parsed_output:error_status) AS es
+  WHERE pe.pipeline_run_id = '{run_id}'
+) err
+  ON p.source_path = err.source_path
+  AND page.value:id::INT = err.error_page_id
 WHERE p.pipeline_run_id = '{run_id}'
 """)
 
 page_count = spark.table(pages_table).filter(f"pipeline_run_id = '{run_id}'").count()
-print(f"Created {pages_table} with {page_count} pages.")
+print(f"Inserted {page_count} pages into {pages_table}.")
 
 # COMMAND ----------
 

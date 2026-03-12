@@ -59,6 +59,7 @@ function App() {
         )}
         {route.page === "document" && (
           <DocumentDetail
+            key={route.fileName}
             fileName={route.fileName}
             onBack={() => setRoute({ page: "documents" })}
             onPageSelect={(pn) =>
@@ -72,6 +73,7 @@ function App() {
         )}
         {route.page === "pageViewer" && (
           <PageViewer
+            key={`${route.fileName}:${route.pageNumber}`}
             fileName={route.fileName}
             pageNumber={route.pageNumber}
             onBack={() =>

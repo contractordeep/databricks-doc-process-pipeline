@@ -1,5 +1,6 @@
 # Cursor
 .cursor/skills
+.cursor
 
 # Python
 __pycache__/
