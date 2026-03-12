@@ -32,8 +32,8 @@ export function PageViewer({ fileName, pageNumber, onBack, onPageChange }: Props
 
   if (loading || !page || !doc) {
     return (
-      <div className="p-8 animate-pulse">
-        <div className="h-6 w-48 bg-gray-200 rounded mb-4" />
+      <div className="p-6 animate-pulse">
+        <div className="h-5 w-48 bg-gray-200 rounded mb-4" />
         <div className="h-[600px] bg-gray-200 rounded" />
       </div>
     );
@@ -44,93 +44,86 @@ export function PageViewer({ fileName, pageNumber, onBack, onPageChange }: Props
   const hasNext = pageNumber < totalPages - 1;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-[calc(100vh-2.75rem)]">
       <div className="flex-1 overflow-auto p-6">
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={onBack}
-            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            className="text-sm text-gray-500 hover:text-[var(--db-dark)] flex items-center gap-1"
           >
             &larr; Back to {fileName}
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => hasPrev && onPageChange(pageNumber - 1)}
               disabled={!hasPrev}
-              className="px-3 py-1 border rounded text-sm disabled:opacity-30 hover:bg-gray-50"
+              className="px-2.5 py-1 border border-[var(--db-border)] rounded-md text-sm disabled:opacity-30 hover:bg-gray-50 transition-colors"
             >
-              &larr; Prev
+              &larr;
             </button>
-            <span className="text-sm font-medium">
-              Page {pageNumber + 1} of {totalPages}
+            <span className="text-sm font-medium text-[var(--db-dark)]">
+              Page {pageNumber + 1} / {totalPages}
             </span>
             <button
               onClick={() => hasNext && onPageChange(pageNumber + 1)}
               disabled={!hasNext}
-              className="px-3 py-1 border rounded text-sm disabled:opacity-30 hover:bg-gray-50"
+              className="px-2.5 py-1 border border-[var(--db-border)] rounded-md text-sm disabled:opacity-30 hover:bg-gray-50 transition-colors"
             >
-              Next &rarr;
+              &rarr;
             </button>
           </div>
         </div>
 
-        <div className="mb-3 flex items-center gap-4 text-sm text-gray-500">
-          <span>{page.elements.length} elements</span>
-        </div>
-
-        <div className="mb-4">
+        <div className="mb-3">
           <ColorLegend />
         </div>
 
-        {page.pdf_url ? (
-          <div className="border rounded-lg bg-gray-50">
-            <PageCanvas
-              pdfUrl={page.pdf_url}
-              pageNumber={pageNumber}
-              bboxPageWidth={page.page_width}
-              bboxPageHeight={page.page_height}
-              elements={page.elements}
-              onElementClick={setSelectedElement}
-            />
-          </div>
-        ) : (
-          <div className="border rounded-lg p-12 text-center text-gray-400 bg-gray-50">
-            No PDF available
-          </div>
-        )}
+        <div>
+          {(page.image_url || page.pdf_url) ? (
+            <div className="bg-white border border-[var(--db-border)] rounded-lg shadow-sm">
+              <PageCanvas
+                pdfUrl={page.pdf_url}
+                imageUrl={page.image_url}
+                pageNumber={pageNumber}
+                bboxPageWidth={page.page_width}
+                bboxPageHeight={page.page_height}
+                elements={page.elements}
+                onElementClick={setSelectedElement}
+              />
+            </div>
+          ) : (
+            <div className="border border-[var(--db-border)] rounded-lg p-12 text-center text-gray-400 bg-white">
+              No PDF or image available
+            </div>
+          )}
+        </div>
 
         <div className="mt-6">
-          <h3 className="text-md font-semibold mb-3">
-            Elements on this page ({page.elements.length})
+          <h3 className="text-sm font-semibold text-[var(--db-dark)] mb-3">
+            Elements ({page.elements.length})
           </h3>
           <div className="space-y-2">
             {page.elements.map((el) => (
               <div
                 key={el.element_id}
                 onClick={() => setSelectedElement(el)}
-                className={`border rounded-lg p-3 cursor-pointer transition-colors text-sm ${
+                className={`bg-white border rounded-lg p-3 cursor-pointer transition-colors text-sm ${
                   selectedElement?.element_id === el.element_id
-                    ? "bg-blue-50 border-blue-300"
-                    : "hover:bg-gray-50"
+                    ? "border-[var(--db-accent)] bg-[var(--db-accent)]/[0.03]"
+                    : "border-[var(--db-border)] hover:border-gray-300"
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span
-                    className="text-xs px-1.5 py-0.5 rounded font-medium text-white"
-                    style={{
-                      background: getElementColor(el.element_type),
-                    }}
+                    className="text-[10px] px-1.5 py-0.5 rounded font-medium text-white"
+                    style={{ background: getElementColor(el.element_type) }}
                   >
                     {el.element_type}
                   </span>
-                  <span className="text-xs text-gray-400">
-                    #{el.element_id}
-                  </span>
+                  <span className="text-[10px] text-gray-400">#{el.element_id}</span>
                 </div>
-                <p className="text-gray-700 line-clamp-2">
-                  {el.content?.slice(0, 300) ||
-                    el.ai_description?.slice(0, 300) ||
-                    "No content"}
+                <p className="text-gray-600 line-clamp-2 text-xs">
+                  {el.content?.slice(0, 300) || el.ai_description?.slice(0, 300) || "No content"}
                 </p>
               </div>
             ))}

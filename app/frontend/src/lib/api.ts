@@ -19,6 +19,7 @@ export interface PageOut {
 export interface PageDetailOut {
   page_number: number;
   pdf_url: string;
+  image_url: string;
   page_width: number;
   page_height: number;
   elements: ElementOut[];
@@ -33,6 +34,13 @@ export interface DocumentListOut {
   status: string;
   parsed_at: string | null;
   element_types: Record<string, number>;
+}
+
+export interface PaginatedDocumentsOut {
+  documents: DocumentListOut[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface DocumentDetailOut extends DocumentListOut {
@@ -58,7 +66,11 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 export const api = {
-  listDocuments: () => fetchJson<DocumentListOut[]>(`${BASE}/documents`),
+  listDocuments: (limit = 10, offset = 0, q = "") => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (q) params.set("q", q);
+    return fetchJson<PaginatedDocumentsOut>(`${BASE}/documents?${params}`);
+  },
   getDocument: (fileName: string) =>
     fetchJson<DocumentDetailOut>(`${BASE}/documents/${encodeURIComponent(fileName)}`),
   getPage: (fileName: string, pageNumber: number) =>
@@ -66,5 +78,4 @@ export const api = {
       `${BASE}/documents/${encodeURIComponent(fileName)}/pages/${pageNumber}`
     ),
   getStats: () => fetchJson<StatsOut>(`${BASE}/stats`),
-  pdfUrl: (path: string) => `${BASE}/pdf?path=${encodeURIComponent(path)}`,
 };

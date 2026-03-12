@@ -23,6 +23,7 @@ class PageOut(BaseModel):
 class PageDetailOut(BaseModel):
     page_number: int
     pdf_url: str = ""
+    image_url: str = ""
     page_width: int = 0
     page_height: int = 0
     elements: list[ElementOut] = []
@@ -37,6 +38,13 @@ class DocumentListOut(BaseModel):
     status: str = "unknown"
     parsed_at: Optional[str] = None
     element_types: dict[str, int] = {}
+
+
+class PaginatedDocumentsOut(BaseModel):
+    documents: list[DocumentListOut]
+    total: int
+    limit: int
+    offset: int
 
 
 class DocumentDetailOut(BaseModel):

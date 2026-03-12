@@ -14,14 +14,11 @@ export function ElementPanel({ element, onClose }: ElementPanelProps) {
   const isFigure = element.element_type === "figure";
 
   return (
-    <div className="border-l bg-white w-96 flex-shrink-0 overflow-y-auto">
-      <div className="p-4 border-b flex items-center justify-between">
+    <div className="border-l border-[var(--db-border)] bg-white w-96 flex-shrink-0 overflow-y-auto">
+      <div className="p-4 border-b border-[var(--db-border)] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div
-            className="w-3 h-3 rounded-sm"
-            style={{ background: color }}
-          />
-          <span className="font-semibold text-sm">
+          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+          <span className="font-semibold text-sm text-[var(--db-dark)]">
             {element.element_type.toUpperCase()} #{element.element_id}
           </span>
         </div>
@@ -35,7 +32,7 @@ export function ElementPanel({ element, onClose }: ElementPanelProps) {
 
       <div className="p-4 space-y-4">
         <div>
-          <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">
+          <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
             Bounding Box
           </h4>
           <p className="text-xs text-gray-600 font-mono">
@@ -46,7 +43,7 @@ export function ElementPanel({ element, onClose }: ElementPanelProps) {
 
         {isFigure && element.ai_description && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">
+            <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
               AI Description
             </h4>
             <p className="text-sm text-gray-700 leading-relaxed">
@@ -56,12 +53,12 @@ export function ElementPanel({ element, onClose }: ElementPanelProps) {
         )}
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">
+          <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
             Content
           </h4>
           {isTable ? (
             <div
-              className="text-sm overflow-x-auto border rounded p-2"
+              className="text-sm overflow-x-auto border border-[var(--db-border)] rounded p-2"
               dangerouslySetInnerHTML={{ __html: element.content }}
             />
           ) : (

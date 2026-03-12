@@ -5,8 +5,7 @@
 # Compute settings (instance type, workers, spark config) are
 # managed in databricks.yml as bundle variables.
 #
-# After changing catalog or schema, also update
-# resources/volumes.yml to match, then redeploy.
+# Schema and volumes are created by the pipeline from this config (no separate volumes file).
 # ============================================================
 
 # Define one or more document sources. Each source is synced into
@@ -18,7 +17,7 @@
 sources:
   - name: "sample_docs"
     type: "volume"
-    path: "/Volumes/main/doc_processing/sample_docs/sample"
+    path: "/Volumes/users/deep_contractor/sample_docs/sample"
     file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
     recursive: true
 
@@ -67,14 +66,14 @@ sources:
   #     account_key_secret: "storage-account-key"
 
 processing:
-  batch_size: 50
-  max_retries: 3
-  retry_delay_seconds: 10
+  batch_size: 40
+  max_retries: 1
+  retry_delay_seconds: 0
 
   ai_parse_options:
     version: "2.0"
     description_element_types: "*"
-    save_page_images: false
+    save_page_images: true
 
 # Compute settings (instance type, workers, spark config) are defined
 # in databricks.yml as bundle variables and auto-sync to the job cluster.
@@ -82,8 +81,8 @@ processing:
 # Set your Unity Catalog and schema here. All tables and volumes
 # are created under this catalog.schema namespace.
 storage:
-  catalog: "main"
-  schema: "doc_processing"
+  catalog: "<enter-your-catalog-name>" # to edit
+  schema: "<enter-your-schema-name>" # to edit
   staging_volume: "staging"
 
   tables:

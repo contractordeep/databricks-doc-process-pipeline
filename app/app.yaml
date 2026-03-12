@@ -4,6 +4,6 @@ env:
   - name: DATABRICKS_WAREHOUSE_ID
     valueFrom: "sql-warehouse"
   - name: DATABRICKS_CATALOG
-    value: "main"
+    value: "users"
   - name: DATABRICKS_SCHEMA
-    value: "doc_processing"
+    value: "deep_contractor"

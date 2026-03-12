@@ -47,7 +47,7 @@ resources:
       resources:
         - name: "sql-warehouse"
           sql_warehouse:
-            id: "40ff4a2c8fd4306a"
+            id: "<enter-your-warehouse-id>" # to edit
             permission: "CAN_USE"
 
 targets:

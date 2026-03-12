@@ -57,13 +57,12 @@ num_batches = max(1, math.ceil(raw_count / batch_size))
 raw_table = config.fqn(config.storage.tables.raw_documents)
 
 # Round-robin assignment by file size rank so each batch gets a mix of
-# large and small documents, keeping every batch at exactly batch_size
-# (the last batch may have fewer if raw_count is not evenly divisible).
+# large and small documents, distributing load evenly across batches.
 spark.sql(f"""
 CREATE OR REPLACE TABLE {raw_table} AS
 SELECT
   *,
-  CAST(FLOOR((rn - 1) / {batch_size}) + 1 AS INT) AS batch_id
+  CAST(((rn - 1) % {num_batches}) + 1 AS INT) AS batch_id
 FROM (
   SELECT
     *,
@@ -92,11 +91,12 @@ for row in batch_counts:
 # COMMAND ----------
 
 opts = config.processing.ai_parse_options
-image_volume_path = f"/Volumes/{config.catalog}/{config.schema}/{config.storage.image_volume}"
+image_volume_base = f"/Volumes/{config.catalog}/{config.schema}/{config.storage.image_volume}"
+image_output_path = f"{image_volume_base}/{run_id}"
 
 parse_options_parts = [f"'version', '{opts.version}'"]
 if opts.save_page_images:
-    parse_options_parts.append(f"'imageOutputPath', '{image_volume_path}/'")
+    parse_options_parts.append(f"'imageOutputPath', '{image_output_path}/'")
 parse_options_parts.append(f"'descriptionElementTypes', '{opts.description_element_types}'")
 parse_options_sql = ", ".join(parse_options_parts)
 

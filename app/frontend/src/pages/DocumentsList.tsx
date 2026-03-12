@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import type { DocumentListOut } from "@/lib/api";
 import { api } from "@/lib/api";
 import { getElementColor } from "@/lib/colors";
+
+const PAGE_SIZE = 10;
 
 interface Props {
   onSelect: (fileName: string) => void;
@@ -9,112 +11,146 @@ interface Props {
 
 export function DocumentsList({ onSelect }: Props) {
   const [docs, setDocs] = useState<DocumentListOut[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const hasMore = docs.length < total;
 
   useEffect(() => {
-    api.listDocuments().then((d) => {
-      setDocs(d);
-      setLoading(false);
-    });
-  }, []);
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  const filtered = docs.filter(
-    (d) =>
-      d.file_name.toLowerCase().includes(search.toLowerCase()) ||
-      d.source_name.toLowerCase().includes(search.toLowerCase())
+  const fetchDocs = useCallback(
+    async (offset: number, append: boolean) => {
+      if (!append) setLoading(true);
+      else setLoadingMore(true);
+      try {
+        const res = await api.listDocuments(PAGE_SIZE, offset, debouncedSearch);
+        setDocs((prev) => (append ? [...prev, ...res.documents] : res.documents));
+        setTotal(res.total);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [debouncedSearch]
   );
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="animate-pulse space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-12 bg-gray-200 rounded" />
-          ))}
-        </div>
-      </div>
+  useEffect(() => {
+    setDocs([]);
+    fetchDocs(0, false);
+  }, [fetchDocs]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          fetchDocs(docs.length, true);
+        }
+      },
+      { rootMargin: "200px" }
     );
-  }
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, docs.length, fetchDocs]);
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {docs.length} documents processed
-        </p>
+      <div className="flex items-end justify-between mb-5">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--db-dark)]">Documents</h1>
+          <p className="text-gray-400 text-sm mt-0.5">
+            {total} document{total !== 1 ? "s" : ""} processed
+          </p>
+        </div>
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" strokeLinecap="round" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by name or source..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-72 pl-9 pr-3 py-2 bg-white border border-[var(--db-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--db-accent)]/30 focus:border-[var(--db-accent)]"
+          />
+        </div>
       </div>
 
-      <input
-        type="text"
-        placeholder="Search by file name or source..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full max-w-md mb-4 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-
-      <div className="border rounded-lg overflow-hidden">
+      <div className="bg-white border border-[var(--db-border)] rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="text-left p-3 font-semibold">File Name</th>
-              <th className="text-left p-3 font-semibold">Source</th>
-              <th className="text-center p-3 font-semibold">Pages</th>
-              <th className="text-center p-3 font-semibold">Elements</th>
-              <th className="text-center p-3 font-semibold">Status</th>
-              <th className="text-left p-3 font-semibold">Element Types</th>
+          <thead>
+            <tr className="border-b border-[var(--db-border)] bg-gray-50/80">
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">File Name</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</th>
+              <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Pages</th>
+              <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Elements</th>
+              <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Types</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-[var(--db-border)]">
+                  {Array.from({ length: 6 }).map((_, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : docs.length === 0 ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="p-8 text-center text-gray-400"
-                >
+                <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
                   No documents found
                 </td>
               </tr>
             ) : (
-              filtered.map((doc) => (
+              docs.map((doc) => (
                 <tr
                   key={doc.file_name}
                   onClick={() => onSelect(doc.file_name)}
-                  className="border-b hover:bg-blue-50 cursor-pointer transition-colors"
+                  className="border-b border-[var(--db-border)] hover:bg-[var(--db-accent)]/[0.03] cursor-pointer transition-colors"
                 >
-                  <td className="p-3 font-medium text-blue-700">
+                  <td className="px-4 py-3 font-medium text-[var(--db-dark)]">
                     {doc.file_name}
                   </td>
-                  <td className="p-3 text-gray-600">{doc.source_name}</td>
-                  <td className="p-3 text-center">{doc.total_pages}</td>
-                  <td className="p-3 text-center">{doc.total_elements}</td>
-                  <td className="p-3 text-center">
+                  <td className="px-4 py-3 text-gray-500">{doc.source_name}</td>
+                  <td className="px-4 py-3 text-center text-gray-600">{doc.total_pages}</td>
+                  <td className="px-4 py-3 text-center text-gray-600">{doc.total_elements}</td>
+                  <td className="px-4 py-3 text-center">
                     <span
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                         doc.status === "completed"
-                          ? "bg-green-100 text-green-800"
+                          ? "bg-green-50 text-green-700 ring-1 ring-green-200"
                           : doc.status === "failed"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-600"
+                            ? "bg-red-50 text-red-700 ring-1 ring-red-200"
+                            : "bg-gray-50 text-gray-500 ring-1 ring-gray-200"
                       }`}
                     >
                       {doc.status}
                     </span>
                   </td>
-                  <td className="p-3">
+                  <td className="px-4 py-3">
                     <div className="flex gap-1 flex-wrap">
                       {(Object.entries(doc.element_types) as [string, number][])
                         .sort(([, a], [, b]) => b - a)
-                        .slice(0, 5)
+                        .slice(0, 4)
                         .map(([type, count]) => (
                           <span
                             key={type}
                             className="text-xs px-1.5 py-0.5 rounded"
                             style={{
-                              background: getElementColor(type) + "20",
+                              background: getElementColor(type) + "18",
                               color: getElementColor(type),
-                              border: `1px solid ${getElementColor(type)}40`,
                             }}
                           >
                             {type}: {count}
@@ -127,6 +163,10 @@ export function DocumentsList({ onSelect }: Props) {
             )}
           </tbody>
         </table>
+        {loadingMore && (
+          <div className="text-center py-4 text-sm text-gray-400">Loading more...</div>
+        )}
+        <div ref={sentinelRef} className="h-1" />
       </div>
     </div>
   );

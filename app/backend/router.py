@@ -5,6 +5,7 @@ from fastapi.responses import Response
 
 from .models import (
     DocumentListOut,
+    PaginatedDocumentsOut,
     DocumentDetailOut,
     PageOut,
     ElementOut,
@@ -16,11 +17,30 @@ from .db import execute_query, fqn
 api = APIRouter(prefix="/api")
 
 
-@api.get("/documents", response_model=list[DocumentListOut], operation_id="listDocuments")
-async def list_documents():
+@api.get("/documents", response_model=PaginatedDocumentsOut, operation_id="listDocuments")
+async def list_documents(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    q: str = Query(""),
+):
     elements_table = fqn("document_elements")
     pages_table = fqn("document_pages")
     log_table = fqn("processing_log")
+
+    search_clause = ""
+    if q.strip():
+        safe_q = q.replace("'", "''")
+        search_clause = f"""
+            AND (LOWER(e.file_name) LIKE LOWER('%{safe_q}%')
+                 OR LOWER(e.source_name) LIKE LOWER('%{safe_q}%'))
+        """
+
+    count_rows = execute_query(f"""
+        SELECT COUNT(DISTINCT e.file_name) AS total
+        FROM {elements_table} e
+        WHERE 1=1 {search_clause}
+    """)
+    total = count_rows[0]["total"] if count_rows else 0
 
     rows = execute_query(f"""
         SELECT
@@ -42,21 +62,27 @@ async def list_documents():
             FROM {log_table}
             GROUP BY file_name
         ) l ON e.file_name = l.file_name
+        WHERE 1=1 {search_clause}
         GROUP BY e.file_name, e.source_name, e.source_path, p.total_pages, l.status
         ORDER BY parsed_at DESC
+        LIMIT {limit} OFFSET {offset}
     """)
 
-    results = []
-    for r in rows:
+    file_names = [r["file_name"] for r in rows]
+    element_types_map: dict[str, dict[str, int]] = {}
+    if file_names:
+        names_sql = ", ".join(f"'{fn.replace(chr(39), chr(39)+chr(39))}'" for fn in file_names)
         type_rows = execute_query(f"""
-            SELECT element_type, COUNT(*) AS cnt
+            SELECT file_name, element_type, COUNT(*) AS cnt
             FROM {elements_table}
-            WHERE file_name = '{r["file_name"]}'
-            GROUP BY element_type
+            WHERE file_name IN ({names_sql})
+            GROUP BY file_name, element_type
         """)
-        element_types = {tr["element_type"]: tr["cnt"] for tr in type_rows}
+        for tr in type_rows:
+            element_types_map.setdefault(tr["file_name"], {})[tr["element_type"]] = tr["cnt"]
 
-        results.append(DocumentListOut(
+    documents = [
+        DocumentListOut(
             file_name=r["file_name"],
             source_name=r.get("source_name", ""),
             source_path=r.get("source_path", ""),
@@ -64,9 +90,11 @@ async def list_documents():
             total_pages=r["total_pages"],
             status=r.get("status", "unknown"),
             parsed_at=r.get("parsed_at"),
-            element_types=element_types,
-        ))
-    return results
+            element_types=element_types_map.get(r["file_name"], {}),
+        )
+        for r in rows
+    ]
+    return PaginatedDocumentsOut(documents=documents, total=total, limit=limit, offset=offset)
 
 
 @api.get("/documents/{file_name}", response_model=DocumentDetailOut, operation_id="getDocument")
@@ -143,16 +171,18 @@ async def get_page(file_name: str, page_number: int):
     elements_table = fqn("document_elements")
     pages_table = fqn("document_pages")
     log_table = fqn("processing_log")
-
     parsed_table = fqn("parsed_documents")
 
     page_rows = execute_query(f"""
-        SELECT page_number
+        SELECT page_number, image_uri
         FROM {pages_table}
         WHERE file_name = '{file_name}' AND page_number = {page_number}
     """)
     if not page_rows:
         raise HTTPException(status_code=404, detail="Page not found")
+
+    image_uri = page_rows[0].get("image_uri") or ""
+    image_url = f"/api/file?path={image_uri}" if image_uri else ""
 
     source_rows = execute_query(f"""
         SELECT MAX(source_path) AS source_path FROM {log_table}
@@ -209,10 +239,32 @@ async def get_page(file_name: str, page_number: int):
     return PageDetailOut(
         page_number=page_number,
         pdf_url=pdf_url,
+        image_url=image_url,
         page_width=page_width,
         page_height=page_height,
         elements=elements,
     )
+
+
+@api.get("/file", operation_id="getFile")
+async def get_file(path: str = Query(...)):
+    if not path:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    from databricks.sdk import WorkspaceClient
+
+    try:
+        w = WorkspaceClient()
+        resp = w.files.download(path)
+        file_bytes = resp.contents.read()
+
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type is None:
+            mime_type = "application/octet-stream"
+
+        return Response(content=file_bytes, media_type=mime_type)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"File not found: {e}")
 
 
 @api.get("/pdf", operation_id="getPdf")

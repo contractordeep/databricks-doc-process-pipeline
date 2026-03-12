@@ -19,28 +19,36 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top nav */}
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-screen-xl mx-auto px-4 flex items-center h-12 gap-6">
-          <span className="font-bold text-gray-900">Doc Viewer</span>
-          <nav className="flex gap-4 text-sm">
+    <div className="min-h-screen bg-[var(--db-surface)]">
+      <header className="bg-[var(--db-dark)] sticky top-0 z-50">
+        <div className="max-w-screen-xl mx-auto px-5 flex items-center h-11 gap-6">
+          <div className="flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
+              <path d="M20 0L40 10L20 20L0 10L20 0Z" fill="#FF3621" />
+              <path d="M40 10L20 20L0 10" stroke="#FF3621" strokeWidth="0" />
+              <path d="M20 20L40 30L20 40L0 30L20 20Z" fill="#FF3621" opacity="0.6" />
+            </svg>
+            <span className="font-semibold text-white text-sm tracking-tight">
+              Doc Viewer
+            </span>
+          </div>
+          <nav className="flex gap-1 text-sm ml-4">
             <button
               onClick={() => setRoute({ page: "dashboard" })}
-              className={`py-3 border-b-2 transition-colors ${
+              className={`px-3 py-1.5 rounded-md transition-colors ${
                 route.page === "dashboard"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "bg-white/15 text-white"
+                  : "text-white/60 hover:text-white hover:bg-white/10"
               }`}
             >
               Dashboard
             </button>
             <button
               onClick={() => setRoute({ page: "documents" })}
-              className={`py-3 border-b-2 transition-colors ${
+              className={`px-3 py-1.5 rounded-md transition-colors ${
                 route.page !== "dashboard"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "bg-white/15 text-white"
+                  : "text-white/60 hover:text-white hover:bg-white/10"
               }`}
             >
               Documents
@@ -49,7 +57,6 @@ function App() {
         </div>
       </header>
 
-      {/* Content */}
       <main className="max-w-screen-xl mx-auto">
         {route.page === "dashboard" && <Dashboard onNavigate={navigate} />}
         {route.page === "documents" && (

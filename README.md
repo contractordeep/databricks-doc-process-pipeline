@@ -2,6 +2,24 @@
 
 Extract text, tables, figures, and layout from documents at scale on Databricks—then inspect results in a built-in viewer. The pipeline is config-driven, runs with Databricks Asset Bundles and Unity Catalog, and uses `ai_parse_document` for parsing.
 
+## Screenshots
+
+**Dashboard** — corpus-level stats, element type distribution, and source breakdown.
+
+![Dashboard](docs/images/dashboard.png)
+
+**Pipeline Run** — four-task job with sync, ingest, parse, and flatten stages.
+
+![Pipeline Run](docs/images/pipeline-run.png)
+
+**Document List** — paginated table with search, status badges, and element type tags.
+
+![Documents List](docs/images/documents-list.png)
+
+**Page Viewer** — parser page image with exact bounding box overlays and element inspection panel.
+
+![Page Viewer](docs/images/page-viewer.png)
+
 ## Table of Contents
 
 - [Usage](#usage)
@@ -27,12 +45,11 @@ Prerequisites: Databricks CLI configured, Runtime 17.1+, Unity Catalog enabled, 
 ### Step 1 — Clone and configure
 
 ```bash
-git clone <repo-url> && cd databricks-doc-process-pipeline
+git clone <repo-url>
+cd databricks-doc-process-pipeline
 ```
 
-Edit two files:
-
-**`config/pipeline_config.yml`** — set your catalog, schema, and document sources:
+Edit **`config/pipeline_config.yml`** — set your catalog, schema, and document sources (single place; the pipeline creates the schema and volumes on first run):
 
 ```yaml
 storage:
@@ -42,20 +59,33 @@ storage:
 sources:
   - name: "my_docs"
     type: "volume"
-    paths:
-      - "/Volumes/my_catalog/my_schema/raw_docs/my_folder"
+    path: "/Volumes/my_catalog/my_schema/sample_docs/sample"
     file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
     recursive: true
 ```
 
-**`resources/volumes.yml`** — set the same catalog and schema for volume provisioning:
+Edit **`databricks.yml`** — set the SQL warehouse ID for the viewer app, and optionally adjust compute settings (instance type, workers, spark config). Defaults work for small loads:
 
 ```yaml
-catalog_name: "my_catalog"
-schema_name: "my_schema"
+resources:
+  apps:
+    doc_viewer:
+      resources:
+        - name: "sql-warehouse"
+          sql_warehouse:
+            id: "<your-warehouse-id>"
+            permission: "CAN_USE"
 ```
 
-**`databricks.yml`** — optionally adjust compute settings (instance type, workers, spark config). Defaults work for small loads.
+Edit **`app/app.yaml`** — set the catalog and schema to match your `pipeline_config.yml`:
+
+```yaml
+env:
+  - name: DATABRICKS_CATALOG
+    value: "my_catalog"
+  - name: DATABRICKS_SCHEMA
+    value: "my_schema"
+```
 
 ### Step 2 — Validate
 
@@ -63,7 +93,7 @@ schema_name: "my_schema"
 databricks bundle validate
 ```
 
-Checks `databricks.yml`, job definitions, and volume resources against the workspace.
+Checks `databricks.yml` and job definitions against the workspace.
 
 ### Step 3 — Deploy
 
@@ -71,11 +101,7 @@ Checks `databricks.yml`, job definitions, and volume resources against the works
 databricks bundle deploy
 ```
 
-Deploys the job, volumes, and app to the workspace tied to your active Databricks CLI profile. Switch profiles to target different workspaces:
-
-```bash
-databricks bundle deploy --profile prod
-```
+Deploys the job and app to the workspace tied to your active Databricks CLI profile.
 
 ### Step 4 — Run the pipeline
 
@@ -94,26 +120,11 @@ Re-running the pipeline on the same documents is safe — unchanged files are sk
 
 ### Step 5 — Start the viewer app
 
-Set the environment variables in `app/app.yaml` for your workspace:
-
-```yaml
-env:
-  - name: DATABRICKS_WAREHOUSE_ID
-    valueFrom: "sql-warehouse"
-  - name: DATABRICKS_CATALOG
-    value: "my_catalog"
-  - name: DATABRICKS_SCHEMA
-    value: "my_schema"
-```
-
-Deploy and start the app:
-
 ```bash
-databricks bundle deploy
 databricks bundle run doc_viewer
 ```
 
-Open the Databricks App URL from your workspace UI. You can browse documents, view rendered PDF pages, and inspect bounding boxes for every extracted element.
+Open the Databricks App URL from your workspace UI. You can browse documents, view page images with bounding box overlays, and inspect every extracted element.
 
 ### Updating the frontend
 
@@ -248,8 +259,7 @@ flowchart LR
 ├── config/
 │   └── pipeline_config.yml      # Pipeline configuration
 ├── resources/
-│   ├── doc_processing_job.yml   # DAB job definition (uses bundle variables)
-│   └── volumes.yml              # UC managed volumes
+│   └── doc_processing_job.yml   # DAB job definition (uses bundle variables)
 ├── src/
 │   ├── 00_sync_sources.py       # Task 1: sync + register files
 │   ├── 01_ingest_documents.py   # Task 2: load binary content
@@ -270,7 +280,7 @@ Settings are split between two files based on when they're needed:
 | `config/pipeline_config.yml` | Catalog, schema, sources, processing options | Runtime (by notebooks) |
 | `databricks.yml` | Instance type, workers, spark config | Deploy time (by DAB) |
 
-After changing `storage.catalog` or `storage.schema` in the config, also update `resources/volumes.yml` to match.
+Schema and volumes (`staging`, `parsed_images`) are created automatically by the pipeline from `storage.catalog` and `storage.schema` in this config — no separate volume resource file.
 
 ### Runtime Config (`pipeline_config.yml`)
 
@@ -303,8 +313,8 @@ Each source entry has a `name`, `type`, and type-specific fields. You can list m
 - name: "invoices"
   type: "volume"
   paths:
-    - "/Volumes/{catalog}/{schema}/raw_docs/invoices"
-    - "/Volumes/{catalog}/{schema}/raw_docs/receipts"
+    - "/Volumes/{catalog}/{schema}/my_volume/invoices"
+    - "/Volumes/{catalog}/{schema}/my_volume/receipts"
   file_pattern: "*.{pdf,jpg,jpeg,png,doc,docx,ppt,pptx}"
   recursive: true
 ```
@@ -507,12 +517,12 @@ Each executor calls `ai_parse_document(content, map(...))` on its assigned rows.
 
 ### Managed Volumes
 
-Defined in `resources/volumes.yml`:
+Created by the pipeline (task 00) from `config/pipeline_config.yml` — set `storage.catalog` and `storage.schema` there only.
 
 | Volume | Purpose |
 |---|---|
-| `raw_docs` | User-uploaded documents before processing |
-| `staging` | Files downloaded from external sources (SharePoint, Google Drive, ADLS) |
+| `staging` | Files downloaded from external sources; staging path for sync |
+| `parsed_images` | Page images from parser when `save_page_images: true` |
 
 ### Tables
 
@@ -650,28 +660,29 @@ Created by `01_ingest_documents.py`, updated by `02_parse_documents.py` and `03_
 
 ## Document Viewer App
 
-The app lives in `app/` and is defined in `databricks.yml` as a bundle resource. The original PDF is served from the source volume via the Databricks SDK Files API and rendered in the browser using pdf.js. No page images are stored.
+The app lives in `app/` and is defined in `databricks.yml` as a bundle resource. When `save_page_images` is enabled, parser page images are served from the volume for exact bounding box alignment. Otherwise, the original PDF is rendered in-browser via pdf.js as a fallback.
 
 | Layer | Stack |
 |---|---|
-| Backend | FastAPI, `databricks-sql-connector`, `databricks-sdk` (Files API to serve PDFs) |
+| Backend | FastAPI, `databricks-sql-connector`, `databricks-sdk` (Files API to serve PDFs and page images) |
 | Frontend | React + TypeScript + Vite + react-pdf (pdf.js), Tailwind CSS |
 
 Features:
 
 - Dashboard with corpus-level stats (documents, pages, elements, type distribution)
-- Document list with search and filtering
-- Document detail view with page navigation
-- In-browser PDF rendering with interactive, color-coded bounding box overlays
+- Paginated document list (10 at a time) with server-side search
+- Document detail view with page grid navigation
+- Parser page image rendering with exact, color-coded bounding box overlays (scrollable at natural size)
+- PDF fallback rendering when page images are not available
 - Element inspection panel showing content, AI description, and coordinates
 - Table content rendered as HTML; figure descriptions displayed inline
 
 ## Notes and Limitations
 
 - `ai_parse_document` is currently Public Preview
-- The function is tuned for English
+- The function is tuned for latin languages
 - Dense or low-quality documents may parse slowly
 - Documents with digital signatures may parse inaccurately
 - Figure descriptions require `descriptionElementTypes` to be set in config
-- The app renders the original PDF in-browser; no page images are stored
+- With `save_page_images: true`, parser page images are stored in the `parsed_images` volume and used for exact bounding box alignment; with `false`, the app falls back to in-browser PDF rendering
 - Individual elements may have multiple bounding boxes; the pipeline preserves them with one row per bbox
