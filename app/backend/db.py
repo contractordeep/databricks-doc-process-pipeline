@@ -21,7 +21,8 @@ def _get_schema() -> str:
 
 
 def fqn(table: str) -> str:
-    return f"{_get_catalog()}.{_get_schema()}.{table}"
+    """Return fully-qualified table name with backticks for names containing -,_ etc."""
+    return f"`{_get_catalog()}`.`{_get_schema()}`.`{table}`"
 
 
 def get_connection():

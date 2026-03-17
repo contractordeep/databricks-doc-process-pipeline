@@ -146,8 +146,8 @@ class PipelineConfig:
         return self.storage.schema
 
     def fqn(self, table_name: str) -> str:
-        """Return fully-qualified table name: catalog.schema.table"""
-        return f"{self.catalog}.{self.schema}.{table_name}"
+        """Return fully-qualified table name: `catalog`.`schema`.`table` (backticks for names with -,_ etc.)."""
+        return f"`{self.catalog}`.`{self.schema}`.`{table_name}`"
 
 
 def _resolve_placeholders(obj, variables: dict):

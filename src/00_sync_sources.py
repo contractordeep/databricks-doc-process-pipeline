@@ -45,11 +45,11 @@ print(f"Sources configured: {len(config.sources)}")
 
 # COMMAND ----------
 
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {config.catalog}.{config.schema}")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{config.catalog}`.`{config.schema}`")
 
 # Create volumes used by the pipeline so users only configure catalog/schema in pipeline_config.yml
 for vol_name in (config.storage.staging_volume, config.storage.image_volume):
-    spark.sql(f"CREATE VOLUME IF NOT EXISTS {config.catalog}.{config.schema}.{vol_name}")
+    spark.sql(f"CREATE VOLUME IF NOT EXISTS `{config.catalog}`.`{config.schema}`.`{vol_name}`")
 
 registry_table = config.fqn(config.storage.tables.document_registry)
 
